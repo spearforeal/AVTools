@@ -39,6 +39,7 @@ StyleCop.Cache
 # Generic Files
 *.zip
 
+*.idea/
 
 # Generated Files
 *.dll
