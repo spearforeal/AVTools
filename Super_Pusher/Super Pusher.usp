@@ -1,0 +1,226 @@
+//#SYMBOL_NAME ""
+#HINT "Super Pusher"
+#CATEGORY "2" //Conditional
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+#DIGITAL_EXPAND Inputswithoutputs
+#HELP_BEGIN
+Multi-Input Pusher
+Should not jam on the outside so you can have any amount of inputs (up to 100) trigger the output.
+Enable has to be high for any of this to work.
+Push time is how long the pulse is.
+Release delay is the time in between the push and the release.
+All time is in hundreths of a second 1 = 0.1 1 sec = 100.
+Now the outputs lock like an interlock so you get more for your push.
+
+Mode 0 = Interlock output
+Mode 1 = Input = Output Momentary
+Mode 2 = Output Pulses .05s
+Mode 3 = Output Pulses .05s after the Release_Delay_Time
+#HELP_END
+#DEFINE_CONSTANT MAX_SIGNALS 100
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Enable;
+DIGITAL_INPUT Previous;
+DIGITAL_INPUT Pushes[100];
+
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Pushed;
+DIGITAL_OUTPUT Released;
+DIGITAL_OUTPUT Pushes_FB[100];
+
+integer_parameter Push_Time;
+#BEGIN_PARAMETER_PROPERTIES Push_Time
+propValidUnits = unitDecimal|unitTime|unitTicks;
+propDefaultUnit = unitDecimal;
+propDefaultValue = 5d;
+#END_PARAMETER_PROPERTIES
+
+integer_parameter Release_Delay;
+#BEGIN_PARAMETER_PROPERTIES Release_Delay
+propValidUnits = unitDecimal|unitTime|unitTicks;
+propDefaultUnit = unitDecimal;
+propDefaultValue = 5d;
+#END_PARAMETER_PROPERTIES
+
+integer_parameter Mode;
+#BEGIN_PARAMETER_PROPERTIES Mode
+propValidUnits = unitDecimal;
+propDefaultUnit = unitDecimal;
+propDefaultValue = 0d;
+propShortDescription = "0~3";
+#END_PARAMETER_PROPERTIES
+
+Integer Defined;
+NonVolatile Integer Store[2];
+
+Integer Enabled;
+Integer P;
+
+Push Enable
+{
+	Enabled = 1;
+	If((Mode = 0) && (Store[0] > 0))
+	{
+		Pushes_FB[Store[0]] = 1;
+	}
+	If((Mode = 0) && (Store[0] = 0))
+	{
+		Pushes_FB[1] = 1;
+		Store[0] = 1;
+		Store[1] = 1;
+	}
+}
+Release Enable
+{
+	Integer i;
+	Enabled = 0;
+	for(i = 1 to Defined)
+	{
+		Pushes_FB[i] = 0;
+	}
+	
+}
+Push Pushes
+{
+	Integer i;
+	P = GetLastModifiedArrayIndex();
+	If(Enable = 1)
+	{
+		Pulse(Push_Time, Pushed);
+		delay(Release_Delay);
+		Pulse(Push_Time, Released);
+		If(Mode = 0)
+		{
+			for(i = 1 to Defined)
+			{
+				Pushes_FB[i] = 0;
+			}
+			if(Store[0] = Store[1])
+			{
+				Pushes_FB[P] = 1;
+				Store[0] = P;
+				Store[1] = 1;
+			}
+			Else If(Store[0] <> Store[1])
+			{
+				Store[1] = Store[0];
+				Pushes_FB[P] = 1;
+				Store[0] = P;
+			}
+		}
+		If(Mode = 1)
+		{
+			If(Store[0] = Store[1])
+			{
+				Pushes_FB[P] = pushes[P];
+				Store[0] = P;
+				Store[1] = 1;
+			}
+			Else If(Store[0] <> Store[1])
+			{
+				Pushes_FB[P] = pushes[P];
+				Store[1] = Store[0];
+				Pushes_FB[P] = pushes[P];
+				Store[0] = P;
+			}
+		}
+		If(Mode = 2)
+		{
+			Pulse(5, Pushes_FB[P]);
+			If(Store[0] = Store[1])
+			{
+				Pulse(5, Pushes_FB[P]);
+				Store[0] = P;
+				Store[1] = 1;
+			}
+			Else If(Store[0] <> Store[1])
+			{
+				Store[1] = Store[0];
+				Pulse(5, Pushes_FB[P]);
+				Store[0] = P;
+			}
+		}
+		If(Mode = 3)
+		{
+			Wait(Release_Delay, Delay_Timeout)
+			{
+				Pulse(5, Pushes_FB[P]);
+				If(Store[0] = Store[1])
+				{
+					Pulse(5, Pushes_FB[P]);
+					Store[0] = P;
+					Store[1] = 1;
+				}
+				Else If(Store[0] <> Store[1])
+				{
+					Store[1] = Store[0];
+					Pulse(5, Pushes_FB[P]);
+					Store[0] = P;
+				}
+			}
+		}
+	}
+	If(Enable = 0)
+	{
+		For(i = 1 to Defined)
+		{
+			Pushes_FB[i] = 0;
+		}
+	}
+}
+Release Pushes
+{
+	Integer P;
+	Integer i;
+	P = GetLastModifiedArrayIndex();
+	If(Mode > 0)
+	{
+		Pushes_FB[P] = 0;
+	}
+}
+Push Previous
+{
+	Integer i;
+	Integer Back;
+	If(Enabled = 1)
+	{
+		For(i = 1 to Defined)
+		{
+			Pushes_FB[i] = 0;
+		}
+		Back = Store[0];
+		Store[0] = Store[1];
+		Store[1] = back;
+		If(Mode = 0)
+		{
+			Pushes_FB[Store[0]] = 1;
+		}
+		If(Mode > 0)
+		{
+			Pulse(5, Pushes_FB[Store[0]]);
+		}
+		Pulse(Push_Time, Pushed);
+		delay(Release_Delay);
+		Pulse(Push_Time, Released);
+	}
+}
+Function Main()
+{
+	Integer P;
+	Integer i;
+	For(Defined = MAX_SIGNALS to 1 Step -1)
+	{
+		If(IsSignalDefined(Pushes[Defined]))
+		Break;
+	}
+	WaitForInitializationComplete();
+	delay(25);
+}
+
+
