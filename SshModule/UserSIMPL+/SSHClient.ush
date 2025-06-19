@@ -1,0 +1,213 @@
+[BEGIN]
+  Version=1
+[END]
+[BEGIN]
+  ObjTp=FSgntr
+  Sgntr=UserSPlus
+  RelVrs=1
+  IntStrVrs=1
+  SPlusVrs=4.06.00
+  CrossCplrVrs=1.3
+[END]
+[BEGIN]
+  ObjTp=Hd
+[END]
+[BEGIN]
+  ObjTp=Symbol
+  Exclusions=1,19,20,21,88,89,167,168,179,213,214,215,216,217,225,226,248,249,266,267,310,362,378,380,405,407,408,409,478,522,537,554,586,590,611,624,718,756,767,830,841,842,854,883,955,1032,1062,1079,1128,1129,1134,1140,1157,1158,1195,1199,1220,1221,1222,1223,1299,1348,1349,1439,1472,1473,1499,1746,1766,1803,1975,2229,2354,2514,2523,2532,2567,2574,2590,2651,2655,2706,2707,2817,2886,2938,2947,3181,3197,3233,3235,3236,3427,3454,3567,3568,3601,3602,3680,3682,3706,3708,3710,3735,3736,3816,3888,3902,3903,3912,3918,3925,3926,4176,4193,4206,4207,4308,4476,4591,4769,5360,5388,5420,5455,5497,5699,5813,5919,6150,6161,
+  Exclusions_CDS=5,6
+  Inclusions_CDS=7
+  Name=SSHClient
+  SmplCName=SSHClient.usp
+  Code=1
+  SysRev5=4.006
+  SMWRev=3.00.00
+  InputCue1=[~UNUSED~]
+  InputSigType1=Digital
+  InputCue2=input_0_orParamter_1
+  InputSigType2=Digital
+  InputCue3=[~UNUSED~]
+  InputSigType3=Digital
+  InputCue4=init
+  InputSigType4=Digital
+  InputCue5=connect
+  InputSigType5=Digital
+  InputCue6=disconnect
+  InputSigType6=Digital
+  InputCue7=debug
+  InputSigType7=Digital
+  InputCue8=[~UNUSED~]
+  InputSigType8=Digital
+  OutputCue1=initialized_fb
+  OutputSigType1=Digital
+  OutputCue2=connected_fb
+  OutputSigType2=Digital
+  InputList2Cue1=tx$
+  InputList2SigType1=Serial
+  InputList2Cue2=[~UNUSED~]
+  InputList2SigType2=Serial
+  InputList2Cue3=hostname_io
+  InputList2SigType3=Serial
+  InputList2Cue4=username_io
+  InputList2SigType4=Serial
+  InputList2Cue5=password_io
+  InputList2SigType5=Serial
+  InputList2Cue6=debug_name_io
+  InputList2SigType6=Serial
+  InputList2Cue7=[~UNUSED~]
+  InputList2SigType7=Serial
+  InputList2Cue8=port_io
+  InputList2SigType8=Analog
+  InputList2Cue9=[~UNUSED~]
+  InputList2SigType9=Serial
+  InputList2Cue10=[~UNUSED~]
+  InputList2SigType10=Serial
+  OutputList2Cue1=[~UNUSED~]
+  OutputList2SigType1=Serial
+  OutputList2Cue2=[~UNUSED~]
+  OutputList2SigType2=Serial
+  OutputList2Cue3=[~UNUSED~]
+  OutputList2SigType3=Serial
+  OutputList2Cue4=rx$
+  OutputList2SigType4=Serial
+  OutputList2Cue5=[~UNUSED~]
+  OutputList2SigType5=Serial
+  ParamCue1=[Reference Name]
+  ParamCue2=[~UNUSED~]
+  ParamSigType2=Constant
+  ParamCue3=[~UNUSED~]
+  ParamSigType3=Constant
+  ParamCue4=[~UNUSED~]
+  ParamSigType4=Constant
+  ParamCue5=[~UNUSED~]
+  ParamSigType5=Constant
+  ParamCue6=[~UNUSED~]
+  ParamSigType6=Constant
+  ParamCue7=[~UNUSED~]
+  ParamSigType7=Constant
+  ParamCue8=[~UNUSED~]
+  ParamSigType8=Constant
+  ParamCue9=[~UNUSED~]
+  ParamSigType9=Constant
+  ParamCue10=[~UNUSED~]
+  ParamSigType10=Constant
+  ParamCue11=[~UNUSED~]
+  ParamSigType11=Constant
+  ParamCue12=[~UNUSED~]
+  ParamSigType12=Constant
+  ParamCue13=[~UNUSED~]
+  ParamSigType13=Constant
+  ParamCue14=[~UNUSED~]
+  ParamSigType14=Constant
+  ParamCue15=[~UNUSED~]
+  ParamSigType15=Constant
+  ParamCue16=[~UNUSED~]
+  ParamSigType16=Constant
+  ParamCue17=[~UNUSED~]
+  ParamSigType17=Constant
+  ParamCue18=[~UNUSED~]
+  ParamSigType18=Constant
+  ParamCue19=[~UNUSED~]
+  ParamSigType19=Constant
+  ParamCue20=hostname_param
+  ParamSigType20=String
+  ParamCue21=username_param
+  ParamSigType21=String
+  ParamCue22=password_param
+  ParamSigType22=String
+  ParamCue23=debug_name_param
+  ParamSigType23=String
+  ParamCue24=port_param
+  ParamSigType24=Constant
+  MinVariableInputs=8
+  MaxVariableInputs=8
+  MinVariableInputsList2=10
+  MaxVariableInputsList2=10
+  MinVariableOutputs=2
+  MaxVariableOutputs=2
+  MinVariableOutputsList2=5
+  MaxVariableOutputsList2=5
+  MinVariableParams=23
+  MaxVariableParams=23
+  Expand=expand_separately
+  Expand2=expand_separately
+  ProgramTree=Logic
+  SymbolTree=32
+  Hint=
+  PdfHelp=
+  HelpID= 
+  Render=4
+  Smpl-C=16
+  CompilerCode=-48
+  CompilerParamCode=27
+  CompilerParamCode5=14
+  NumFixedParams=1
+  Pp1=1
+  Pp20=20
+  Pp21=21
+  Pp22=22
+  Pp23=23
+  Pp24=24
+  MPp=24
+  NVStorage=10
+  ParamSigType1=String
+  SmplCInputCue1=o#
+  SmplCOutputCue1=i#
+  SmplCInputList2Cue1=an#
+  SmplCOutputList2Cue1=ai#
+  SPlus2CompiledName=S2_SSHClient
+  SymJam=NonExclusive
+  FileName=SSHClient.ush
+  SIMPLPlusModuleEncoding=0
+  clz1=SSHClientDriver
+[END]
+[BEGIN]
+  ObjTp=Dp
+  H=1
+  Tp=1
+  NoS=False
+[END]
+[BEGIN]
+  ObjTp=Dp
+  H=20
+  Tp=1
+  HD=False
+  NoS=False
+  VVS=0
+[END]
+[BEGIN]
+  ObjTp=Dp
+  H=21
+  Tp=1
+  HD=False
+  NoS=False
+  VVS=0
+[END]
+[BEGIN]
+  ObjTp=Dp
+  H=22
+  Tp=1
+  HD=False
+  NoS=False
+  VVS=0
+[END]
+[BEGIN]
+  ObjTp=Dp
+  H=23
+  Tp=1
+  HD=False
+  NoS=False
+  VVS=0
+[END]
+[BEGIN]
+  ObjTp=Dp
+  H=24
+  Tp=1
+  HD=False
+  Sgn=0
+  Lng=False
+  NF=63
+  NoS=True
+  DNF=1
+  VVS=0
+[END]

@@ -1,0 +1,92 @@
+#SYMBOL_NAME "SSHClient"
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+#USER_SIMPLSHARP_LIBRARY "SSHClientDriver"
+
+DIGITAL_INPUT _SKIP_;    
+DIGITAL_INPUT input_0_orParamter_1;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT init, connect, disconnect, debug, _SKIP_;
+STRING_INPUT tx$[250], _SKIP_;
+STRING_INPUT hostname_io[50], username_io[20], password_io[20], debug_name_io[10];
+ANALOG_INPUT _SKIP_, port_io, _SKIP_, _SKIP_;
+STRING_PARAMETER _SKIP_, _SKIP_, _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_;
+STRING_PARAMETER _SKIP_, _SKIP_, _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_;
+STRING_PARAMETER hostname_param[50], username_param[20], password_param[20], debug_name_param[10];
+INTEGER_PARAMETER port_param;
+
+DIGITAL_OUTPUT initialized_fb, connected_fb;
+STRING_OUTPUT _SKIP_,_SKIP_,_SKIP_, rx$, _SKIP_; 
+
+integer connected;
+integer method;
+SSHClientDevice client;
+function RegisterDelegates()
+{
+	RegisterDelegate(client, InitializedData, InitializedDataHandler);
+	RegisterDelegate(client, ConnectionState, ConnectionStateHandler);
+	RegisterDelegate(client, ReceivedData, ReceivedDataHandler);
+	
+}
+callback function InitializedDataHandler(integer state)
+{
+	initialized_fb = state;
+}
+callback function ConnectionStateHandler(integer state)
+{
+	connected = state;
+	connected_fb = state;
+}
+callback function ReceivedDataHandler(string data)
+{
+	rx$ = data;
+}
+PUSH init
+{
+	if(method = 1)
+	{
+		client.Initialize(hostname_param, port_param, username_param, password_param, debug_name_param);
+	}
+	else if (method = 0)
+	{
+		client.Initialize(hostname_io, port_io, username_io, password_io, debug_name_io);
+	}
+	
+}
+PUSH connect
+{
+	client.Connect();
+}
+PUSH disconnect
+{
+	client.Disconnect();
+}
+PUSH debug
+{
+	client.debugEnable = 1;
+}
+RELEASE debug
+{
+	client.debugEnable = 0;
+}
+PUSH input_0_orParamter_1
+{
+	method = 1;
+}
+RELEASE input_0_orParamter_1
+{
+	method = 0;
+}
+THREADSAFE Change tx$
+{
+	if(connected)
+	{
+		client.SendCommand(tx$);
+	}
+}
+function Main()
+{
+	WaitForInitializationComplete();
+	RegisterDelegates();
+}
