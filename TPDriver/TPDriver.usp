@@ -1,0 +1,242 @@
+#CATEGORY "14"
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+DIGITAL_INPUT Startup;
+DIGITAL_INPUT _SKIP_, _SKIP_;
+DIGITAL_INPUT ShutdownSubPage, ShutdownConfirm, ShutdownCancel;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT StartPageTrigger,IndexPageTrigger;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT CloseAllPages;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT FooterClose;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Footer[7];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu1Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu2Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu3Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu4Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu5Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu6Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu7Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu8Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu9Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu10Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu11Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Menu12Sub[12];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_OUTPUT SystemOn_fb;
+DIGITAL_OUTPUT SystemOff_fb;
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT ShutdownPage_fb;
+DIGITAL_OUTPUT _SKIP_,_SKIP_,_SKIP_;
+DIGITAL_OUTPUT StartPage_fb, IndexPage_fb;
+DIGITAL_OUTPUT _SKIP_,_SKIP_,_SKIP_;
+DIGITAL_OUTPUT Footer_fb[7];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu1Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu2Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu3Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu4Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu5Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu6Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu7Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu8Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu9Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu10Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu11Sub_fb[12];
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Menu12Sub_fb[12];
+
+INTEGER x;
+Function fnCloseAllPages()
+{
+	for(x = 1 to 12)
+	{
+		Menu_fb[x] = 0;
+		Menu1Sub_fb[x] = 0;
+		Menu2Sub_fb[x] = 0;
+		Menu3Sub_fb[x] = 0;
+		Menu4Sub_fb[x] = 0;
+		Menu5Sub_fb[x] = 0;
+		Menu6Sub_fb[x] = 0;
+		Menu7Sub_fb[x] = 0;
+		Menu8Sub_fb[x] = 0;
+		Menu9Sub_fb[x] = 0;
+		Menu10Sub_fb[x] = 0;
+		Menu11Sub_fb[x] = 0;
+		Menu12Sub_fb[x] = 0;
+	}
+}
+PUSH Startup
+{
+	StartPage_fb = 0;
+	SystemOn_fb = 1;
+	SystemOff_fb = 0;
+	ShutdownPage_fb = 0;
+	for(x = 1 to 7)
+	{
+		Footer_fb[x] = 0;
+	}
+}
+PUSH ShutdownConfirm
+{
+	IndexPage_fb = 0;
+	SystemOn_fb = 0;
+	SystemOff_fb = 1;
+	ShutdownPage_fb = 0;
+}
+PUSH ShutdownSubPage
+{
+	ShutdownPage_fb = 1;
+}
+PUSH ShutdownCancel
+{
+	ShutdownPage_fb = 0;
+}
+PUSH CloseAllPages
+{
+	call fnCloseAllPages();
+}
+PUSH Menu
+{
+	call fnCloseAllPages();
+	for(x = 1 to 12)
+	{
+		Menu_fb[x] = 0;
+	}
+	Menu_fb[GetLastModifiedArrayIndex()] = 1;
+}
+PUSH Menu1Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu1Sub[x])Menu1Sub_fb[x] = 1;
+		else Menu1Sub_fb[x] = 0;
+	}
+}	
+PUSH Menu2Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu2Sub[x])Menu2Sub_fb[x] = 1;
+		else Menu2Sub_fb[x] = 0;
+	}
+}	
+
+PUSH Menu3Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu3Sub[x])Menu3Sub_fb[x] = 1;
+		else Menu3Sub_fb[x] = 0;
+	}
+}	
+
+PUSH Menu4Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu4Sub[x])Menu4Sub_fb[x] = 1;
+		else Menu4Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu5Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu5Sub[x])Menu5Sub_fb[x] = 1;
+		else Menu5Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu6Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu6Sub[x])Menu6Sub_fb[x] = 1;
+		else Menu6Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu7Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu7Sub[x])Menu7Sub_fb[x] = 1;
+		else Menu7Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu8Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu8Sub[x])Menu8Sub_fb[x] = 1;
+		else Menu8Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu9Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu9Sub[x])Menu9Sub_fb[x] = 1;
+		else Menu9Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu10Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu10Sub[x])Menu10Sub_fb[x] = 1;
+		else Menu10Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu11Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu11Sub[x])Menu11Sub_fb[x] = 1;
+		else Menu11Sub_fb[x] = 1;
+	}
+}	
+PUSH Menu12Sub
+{
+	for(x = 1 to 12)
+	{
+		if(Menu12Sub[x])Menu12Sub_fb[x] = 1;
+		else Menu12Sub_fb[x] = 1;
+	}
+}	
+PUSH Footer
+{
+	for(x = 1 to 7)
+	{
+		if (Footer[x])Footer_fb[x] = 1
+		else Footer_fb[x] = 0;
+	}
+}
