@@ -5,18 +5,18 @@
 #USER_SIMPLSHARP_LIBRARY "SSHClientDriver"
 
 DIGITAL_INPUT _SKIP_;    
-DIGITAL_INPUT input_0_orParamter_1;
+DIGITAL_INPUT Use_Parameters;
 DIGITAL_INPUT _SKIP_;
-DIGITAL_INPUT init, connect, disconnect, debug, _SKIP_;
+DIGITAL_INPUT Initialize, Connect, Disconnect, Debug, _SKIP_;
 STRING_INPUT tx$[250], _SKIP_;
-STRING_INPUT hostname_io[50], username_io[20], password_io[20], debug_name_io[10];
-ANALOG_INPUT _SKIP_, port_io, _SKIP_, _SKIP_;
+STRING_INPUT Hostname_Override[50], Username_Override[20], Password_Override[20], Debugname_Override[10];
+ANALOG_INPUT _SKIP_, Port_Override, _SKIP_, _SKIP_;
 STRING_PARAMETER _SKIP_, _SKIP_, _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_;
 STRING_PARAMETER _SKIP_, _SKIP_, _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_;
-STRING_PARAMETER hostname_param[50], username_param[20], password_param[20], debug_name_param[10];
-INTEGER_PARAMETER port_param;
+STRING_PARAMETER Hostname_Parameter[50], Username_Parameter[20], Password_Parameter[20], Debugname_Parameter[10];
+INTEGER_PARAMETER Port_Parameter;
 
-DIGITAL_OUTPUT initialized_fb, connected_fb;
+DIGITAL_OUTPUT Initialized_fb, Connected_fb;
 STRING_OUTPUT _SKIP_,_SKIP_,_SKIP_, rx$, _SKIP_; 
 
 integer connected;
@@ -31,50 +31,50 @@ function RegisterDelegates()
 }
 callback function InitializedDataHandler(integer state)
 {
-	initialized_fb = state;
+	Initialized_fb = state;
 }
 callback function ConnectionStateHandler(integer state)
 {
 	connected = state;
-	connected_fb = state;
+	Connected_fb = state;
 }
 callback function ReceivedDataHandler(string data)
 {
 	rx$ = data;
 }
-PUSH init
+PUSH Initialize
 {
 	if(method = 1)
 	{
-		client.Initialize(hostname_param, port_param, username_param, password_param, debug_name_param);
+		client.Initialize(Hostname_Parameter, Port_Parameter, Username_Parameter, Password_Parameter, Debugname_Parameter);
 	}
 	else if (method = 0)
 	{
-		client.Initialize(hostname_io, port_io, username_io, password_io, debug_name_io);
+		client.Initialize(Hostname_Override, Port_Override, Username_Override, Password_Override, Debugname_Override);
 	}
 	
 }
-PUSH connect
+PUSH Connect
 {
 	client.Connect();
 }
-PUSH disconnect
+PUSH Disconnect
 {
 	client.Disconnect();
 }
-PUSH debug
+PUSH Debug
 {
 	client.debugEnable = 1;
 }
-RELEASE debug
+RELEASE Debug
 {
 	client.debugEnable = 0;
 }
-PUSH input_0_orParamter_1
+PUSH Use_Parameters
 {
 	method = 1;
 }
-RELEASE input_0_orParamter_1
+RELEASE Use_Parameters
 {
 	method = 0;
 }

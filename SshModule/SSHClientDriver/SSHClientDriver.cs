@@ -10,7 +10,7 @@ using Crestron.SimplSharp.Net;
 using Crestron.SimplSharp.Ssh;
 using Crestron.SimplSharp.Ssh.Common;
 
-namespace SSHClientDriver // Namespace for the library
+namespace SSHClientDriver
 {
     public delegate void InitializedDataHandler(ushort state);
 
@@ -134,7 +134,7 @@ namespace SSHClientDriver // Namespace for the library
         private void StreamDataReceivedHandler(object sender, ShellDataEventArgs e)
         {
             var stream = (ShellStream)sender;
-            string dataReceived = "";
+            var dataReceived = "";
             while (stream.DataAvailable)
             {
                 dataReceived += stream.Read();
@@ -142,7 +142,7 @@ namespace SSHClientDriver // Namespace for the library
             if(dataReceived != ""){
                 if (dataReceived.Length > 250)
                 {
-                    IEnumerable<string> dataReceivedArray = SplitDataReceived(dataReceived, 250);
+                    var dataReceivedArray = SplitDataReceived(dataReceived, 250);
                     foreach (var str in dataReceivedArray)
                     {
                         ReceivedData(str);
@@ -158,7 +158,6 @@ namespace SSHClientDriver // Namespace for the library
             Disconnect();
 
         }
-
         private void AuthenticationPromptHandler(object sender, AuthenticationPromptEventArgs e)
         {
             Debug("Sending password");
@@ -168,14 +167,11 @@ namespace SSHClientDriver // Namespace for the library
 
             }
         }
-
-
         private void HostKeyReceivedHandler(object sender, HostKeyEventArgs e)
         {
             Debug("Host key received");
             e.CanTrust = true;
         }
-
         private void ClientErrorHandler(object sender, ExceptionEventArgs e)
         {
             Debug("SSH client error " + e.Exception.Message);
@@ -184,7 +180,7 @@ namespace SSHClientDriver // Namespace for the library
 
         private IEnumerable<string> SplitDataReceived(string str, int maxChuckSize)
         {
-            for (int i = 0; i < str.Length; i += maxChuckSize)
+            for (var i = 0; i < str.Length; i += maxChuckSize)
             {
                 yield return str.Substring(i, Math.Min(maxChuckSize, str.Length - i));
             }
@@ -192,8 +188,8 @@ namespace SSHClientDriver // Namespace for the library
 
         private List<string> SplitDataReceived(string str, int maxChuckSize, int i)
         {
-            int stringLength = str.Length;
-            List<string> strArray = new List<string>();
+            var stringLength = str.Length;
+            var strArray = new List<string>();
             for (i = 0; i < stringLength; i += maxChuckSize)
             {
                 if (i + maxChuckSize > stringLength)
@@ -204,9 +200,7 @@ namespace SSHClientDriver // Namespace for the library
 
                 strArray.Add(str.Substring(i, maxChuckSize));
             }
-
             return strArray;
         }
     }
-
 }
