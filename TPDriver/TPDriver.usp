@@ -95,6 +95,14 @@ Function fnCloseAllPages()
 		Menu12Sub_fb[x] = 0;
 	}
 }
+PUSH StartPageTrigger
+{
+	PULSE(50, StartPage_fb);
+}
+PUSH IndexPageTrigger
+{
+	PULSE(50, IndexPage_fb);
+}
 PUSH Startup
 {
 	StartPage_fb = 0;
@@ -236,7 +244,12 @@ PUSH Footer
 {
 	for(x = 1 to 7)
 	{
-		if (Footer[x])Footer_fb[x] = 1
+		if (Footer[x])Footer_fb[x] = 1;
 		else Footer_fb[x] = 0;
 	}
+}
+Function Main()
+{
+	SystemOff_fb = 1;
+	StartPage_fb = 1;
 }
