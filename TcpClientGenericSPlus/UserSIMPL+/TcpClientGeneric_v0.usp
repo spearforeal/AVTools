@@ -1,0 +1,348 @@
+#HINT "Dynamic TCP/IP Client Connection"
+#CATEGORY "32" // Miscellaneous
+// #HELP_PDF_FILE ""
+
+#DEFINE_CONSTANT MAX_ADDRESS_LEN        255
+#DEFINE_CONSTANT MAX_CMD_LENGTH			1023
+#DEFINE_CONSTANT MAX_BUFFER_SIZE		2048
+#DEFINE_CONSTANT CNX_DISCONNECTED  		0 
+#DEFINE_CONSTANT CNX_CONNECTED     		2  
+
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+// #ENABLE_TRACE
+// #DIGITAL_EXPAND 
+// #ANALOG_SERIAL_EXPAND 
+// #OUTPUT_SHIFT 
+// #ENABLE_DYNAMIC
+
+#USER_SIMPLSHARP_LIBRARY "TcpClientGenericSPlus"
+#HELP_BEGIN
+Generic TCP/IP client for use with network devices.
+
+The module will automatically try to connect to the server when sending a
+string to Tx.  It will also send empty strings on a regular basis to check
+the status of the connection.
+
+NetAddress - the IP address or hostname of device to connect to.
+NetPort - Port to use when connecting.
+
+Tx - String to send to the device.
+Rx - Response string from device.
+
+Disable - This disconnects from the device and disables the auto-connect
+on send feature.
+
+Debug - Enable this to show additional debugging info to the console.
+
+RemoveNullCharacters - When enabled, this will strip out all \x00
+characters from incoming strings.
+
+DebugName - This name is prepended to debug strings sent to the console.
+
+SplitCharacter - This is optional.  When specified, the last character of
+this string will be used to effect a "gather" operation on the
+incoming data by dividing it up by this character.
+
+Username/Password - Provide these if the device needs to provide login info.
+
+LoginPrompt/PasswordPrompt - The strings to search for when logging on.  When one
+of these is found after connecting, the Username or Password will be sent.
+
+LoginSuccess/LoginFailure - The strings to search for when logging on that
+indicate whether the login was a success or failure.  If no such
+feedback is provided, leave this blank, and the module will
+assume the login was successful after sending the password,
+or if the password is blank, after sending the user name.
+These are case-INsensitive.
+
+DisconnectCmd - This is the command used to disconnect from the remote
+device gracefully.  Some devices will not let you reconnect to them
+if you do not send the disconnect command first.  This will also
+be sent when the program restarts or the system reboots "normally",
+i.e. it didn't crash.
+#HELP_END
+
+DIGITAL_INPUT _SKIP_, _SKIP_, _SKIP_, _SKIP_, Connect, Disconnect, Disable, Debug, RemoveNullChars;
+
+ANALOG_INPUT _SKIP_, NetPort;
+
+STRING_INPUT _SKIP_, NetAddress[MAX_ADDRESS_LEN], Tx[MAX_CMD_LENGTH], _SKIP_, DebugName[MAX_CMD_LENGTH],
+				_SKIP_, Username[MAX_CMD_LENGTH], Password[MAX_CMD_LENGTH],
+				LoginPrompt[MAX_CMD_LENGTH], PasswordPrompt[MAX_CMD_LENGTH],
+				LoginSuccess[MAX_CMD_LENGTH], LoginFailure[MAX_CMD_LENGTH],
+				DisconnectCmd[MAX_CMD_LENGTH];
+
+
+DIGITAL_OUTPUT _SKIP_, _SKIP_, _SKIP_, _SKIP_, Connected_Fb;
+ANALOG_OUTPUT Connection_State;
+
+STRING_OUTPUT _SKIP_, _SKIP_, _SKIP_, _SKIP_, _SKIP_, _SKIP_, _SKIP_, Rx;
+
+TcpClientGeneric tcpClient;
+
+STRING_PARAMETER NetworkAddress[255];
+INTEGER_PARAMETER NetworkPort;
+STRING_PARAMETER SplitCharacter[1];
+
+#BEGIN_PARAMETER_PROPERTIES NetworkAddress
+propValidUnits = unitString;
+propShortDescription = "Network address or IP of remote device.  String input overrides.";
+#END_PARAMETER_PROPERTIES 
+
+#BEGIN_PARAMETER_PROPERTIES NetworkPort
+propValidUnits = unitDecimal;
+propDefaultValue = 23d;
+propShortDescription = "Network port to connect to.  Analog input overrides.";
+#END_PARAMETER_PROPERTIES
+
+#BEGIN_PARAMETER_PROPERTIES SplitCharacter
+propValidUnits = unitString;
+propDefaultValue = "";
+propShortDescription = "What character to use to divide incoming data into chunks.";
+#END_PARAMETER_PROPERTIES
+
+SIGNED_INTEGER siConnectionStatus;
+INTEGER iConnected, iPort, iConnecting;
+STRING sAddress[MAX_ADDRESS_LEN];
+STRING sRxBuffer[MAX_BUFFER_SIZE];
+
+Function RegisterEvents()
+{
+	RegisterEvent(tcpClient, OnSocketChangeSPlusEvent, OnSocketChangeSPlusEventHandler);
+	RegisterEvent(tcpClient, OnDataRxEventSPlus, OnDataRxEventToSPlusHandler);	
+}
+Function fSendCommand(string sCmd)
+{
+	if (Debug > 0) trace("[+] Tx data =%s\n", sCmd);
+	tcpClient.SendString(sCmd);
+}
+
+Function fConnect()
+{
+	tcpClient.RxBufferSize = MAX_BUFFER_SIZE;
+	tcpClient.Connect();
+}
+
+Function fDisconnect()
+{
+	tcpClient.Disconnect();
+}
+
+Function ConnectAfterDisconnect()
+{
+	if (iConnected > 0)
+	{
+		fDisconnect();
+		delay(200);
+		fConnect();
+	}
+	else
+	{
+		fConnect();
+	}
+}
+
+Function DisableDebounce()
+{
+	wait(50, DisableDebounceWait)
+	{
+		if ((iConnected > 0) || (iConnecting > 0))
+		{
+			fDisconnect();
+		}
+	}
+}
+PUSH Connect
+{
+	fConnect();
+}
+
+PUSH Disconnect
+{
+	fDisconnect();
+}
+
+PUSH RemoveNullChars
+{
+	tcpClient.EnableRemoveNullCharacters();
+}
+
+RELEASE RemoveNullChars
+{
+	tcpClient.DisableRemoveNullCharacters();
+}
+
+
+CHANGE Tx	// Send commands directly to client
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = Tx;
+	
+	fSendCommand(temp);
+}
+
+CHANGE NetAddress
+{
+	sAddress = NetAddress;
+	tcpClient.Address = sAddress;
+}
+
+CHANGE NetPort
+{
+	iPort = NetPort;
+	tcpClient.Port = iPort;
+}
+
+CHANGE DebugName
+{
+	tcpClient.DebugName = DebugName;
+}
+
+PUSH Disable
+{
+	DisableDebounce();	
+}
+
+RELEASE Disable
+{
+	cancelwait(DisableDebounceWait);	
+}
+
+
+CHANGE Debug
+{
+	if (Debug > 0)
+	{
+		tcpClient.EnableDebug();
+	}                           
+	else
+	{
+		tcpClient.DisableDebug();
+	}
+}
+
+CHANGE Username
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = Username;
+	
+	tcpClient.Username = temp;
+}
+
+CHANGE Password
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = Password;
+	
+	tcpClient.Password = temp;
+}
+
+CHANGE LoginPrompt
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = LoginPrompt;
+	
+	tcpClient.LoginPrompt = temp;
+}
+
+CHANGE PasswordPrompt
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = PasswordPrompt;
+	
+	tcpClient.PasswordPrompt = temp;
+}
+
+CHANGE LoginSuccess
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = LoginSuccess;
+	
+	tcpClient.LoginSuccess = temp;
+}
+
+CHANGE LoginFailure
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = LoginFailure;
+	
+	tcpClient.LoginFailure = temp;
+}
+
+CHANGE DisconnectCmd
+{
+	string temp[MAX_CMD_LENGTH];
+	temp = DisconnectCmd;
+	
+	tcpClient.DisconnectCommand = temp;
+}
+EVENTHANDLER OnSocketChangeSPlusEventHandler(TcpClientGeneric sender, AnalogTransmitEventArgs args)
+{
+	integer response;
+	if (Debug > 0) trace("[+] OnSocketChangeSPlusEventHandler received connection state: %d\r", args.Message);
+	
+	if (sender = tcpClient)
+	{
+		response = args.Message;
+		siConnectionStatus = response;
+		
+		if (response = CNX_DISCONNECTED)
+		{
+			Connection_State = CNX_DISCONNECTED;
+			Connected_Fb = 0;
+			iConnected = 0;
+		}
+		else if (response = CNX_CONNECTED)
+		{
+			Connection_State = CNX_CONNECTED;
+			Connected_Fb = 1;
+			iConnected = 1;
+		}
+		else
+		{
+			Connection_State = response;
+			trace("[+] OnSocketChangeSPlusEventHandler received out-of-range response: %d\r", response);
+		}
+	}
+}
+EVENTHANDLER OnDataRxEventToSPlusHandler(TcpClientGeneric sender, SerialTransmitEventArgs args)
+{
+	string response[MAX_BUFFER_SIZE];
+	if (Debug > 0) trace("[+] OnSocketChangeSPlusEventHandler received data: %s\r", args.Message);
+	
+	if (sender = tcpClient)
+	{
+		response = args.Message;
+		Rx = response;
+		
+		if (Debug > 0)
+		{
+			if (len(response) < 256)  // Debugging
+			{
+				trace("[+] Rx data =%s\n", response);
+			}
+			else // Too long to output to console, truncate.
+			{
+				trace("[+] Rx data =%s\n", left(response, 255));
+			}
+		} 
+	}
+}
+Function Main()
+{
+	RegisterEvents();
+	
+	siConnectionStatus = 0;
+	iConnected = 0;
+	iConnecting = 0;
+	iPort = NetworkPort;
+	sAddress = NetworkAddress;
+	
+	tcpClient.Address = sAddress;
+	tcpClient.Port = iPort;
+	
+	tcpClient.SetSplitCharacter(SplitCharacter);
+	
+	WaitForInitializationComplete();
+}
