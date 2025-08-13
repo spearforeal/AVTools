@@ -173,7 +173,7 @@ PUSH Menu4Sub
 	for(x = 1 to 12)
 	{
 		if(Menu4Sub[x])Menu4Sub_fb[x] = 1;
-		else Menu4Sub_fb[x] = 1;
+		else Menu4Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu5Sub
@@ -181,7 +181,7 @@ PUSH Menu5Sub
 	for(x = 1 to 12)
 	{
 		if(Menu5Sub[x])Menu5Sub_fb[x] = 1;
-		else Menu5Sub_fb[x] = 1;
+		else Menu5Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu6Sub
@@ -189,7 +189,7 @@ PUSH Menu6Sub
 	for(x = 1 to 12)
 	{
 		if(Menu6Sub[x])Menu6Sub_fb[x] = 1;
-		else Menu6Sub_fb[x] = 1;
+		else Menu6Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu7Sub
@@ -205,7 +205,7 @@ PUSH Menu8Sub
 	for(x = 1 to 12)
 	{
 		if(Menu8Sub[x])Menu8Sub_fb[x] = 1;
-		else Menu8Sub_fb[x] = 1;
+		else Menu8Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu9Sub
@@ -213,7 +213,7 @@ PUSH Menu9Sub
 	for(x = 1 to 12)
 	{
 		if(Menu9Sub[x])Menu9Sub_fb[x] = 1;
-		else Menu9Sub_fb[x] = 1;
+		else Menu9Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu10Sub
@@ -221,7 +221,7 @@ PUSH Menu10Sub
 	for(x = 1 to 12)
 	{
 		if(Menu10Sub[x])Menu10Sub_fb[x] = 1;
-		else Menu10Sub_fb[x] = 1;
+		else Menu10Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu11Sub
@@ -229,7 +229,7 @@ PUSH Menu11Sub
 	for(x = 1 to 12)
 	{
 		if(Menu11Sub[x])Menu11Sub_fb[x] = 1;
-		else Menu11Sub_fb[x] = 1;
+		else Menu11Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu12Sub
@@ -237,7 +237,7 @@ PUSH Menu12Sub
 	for(x = 1 to 12)
 	{
 		if(Menu12Sub[x])Menu12Sub_fb[x] = 1;
-		else Menu12Sub_fb[x] = 1;
+		else Menu12Sub_fb[x] = 0;
 	}
 }	
 PUSH Footer
