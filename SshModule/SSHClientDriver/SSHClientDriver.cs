@@ -9,6 +9,7 @@ using Crestron.SimplSharp;
 using Crestron.SimplSharp.Net;
 using Crestron.SimplSharp.Ssh;
 using Crestron.SimplSharp.Ssh.Common;
+using Crestron.SimplSharp.CrestronSockets;
 
 namespace SSHClientDriver
 {
@@ -20,22 +21,29 @@ namespace SSHClientDriver
 
     public class SSHClientDevice
     {
-        private bool initialized = false;
-        private SshClient client;
-        private ShellStream stream;
+        private bool _initialized = false;
+        private SshClient _client;
+        private ShellStream _stream;
         private string username, hostname, password;
         private int port;
         public InitializedDataHandler InitializedData { get; set; }
         public ConnectionStateHandler ConnectionState { get; set; }
         public ReceivedDataHandler ReceivedData { get; set; }
-        private string debugName;
-        public ushort debugEnable = 0;
+        private string _debugName;
+        public ushort DebugEnable = 0;
+        private CTimer _monitorTimer;
+        private long _monitorIntervalMs = 5000;
+        private long _idleTimeoutMs = 30000; 
+        private long _lastRxTicks = 0;
+        private ushort _currentConnState = 0;
+        private readonly object _stateLock = new object();
+        
 
         public void Debug(string message)
         {
-            if (debugEnable >= 1)
+            if (DebugEnable >= 1)
             {
-                CrestronConsole.PrintLine(" [" + debugName + "] " + message);
+                CrestronConsole.PrintLine(" [" + _debugName + "] " + message);
             }
         }
 
@@ -45,46 +53,61 @@ namespace SSHClientDriver
             this.port = port;
             this.username = username;
             this.password = password;
-            this.debugName = debugName;
+            this._debugName = debugName;
 
             Debug($"Initializing SSH client: {hostname}:{port}:{username}:{password}");
-            initialized = true;
-            InitializedData(Convert.ToUInt16(1));
+            _initialized = true;
+            InitializedData?.Invoke(1);
+            ConnectionState?.Invoke(0);
+            //InitializedData(Convert.ToUInt16(1));
+            
         }
+
 
         public void Connect()
         {
-            if (!initialized)
+            if (!_initialized)
             {
                 Debug("Connecting SSH client...");
                 return;
             }
 
             var authMethod = new KeyboardInteractiveAuthenticationMethod(username);
-            authMethod.AuthenticationPrompt +=
-                new EventHandler<AuthenticationPromptEventArgs>(AuthenticationPromptHandler);
-            client = new SshClient(hostname, port, username, password);
-            client.ErrorOccurred += new EventHandler<ExceptionEventArgs>(ClientErrorHandler);
-            client.HostKeyReceived += new EventHandler<HostKeyEventArgs>(HostKeyReceivedHandler);
+            authMethod.AuthenticationPrompt += AuthenticationPromptHandler;
+            var pwd = new PasswordAuthenticationMethod(username, password);
+            var connectInfo = new ConnectionInfo(hostname, port, username, new AuthenticationMethod[]{pwd, authMethod});
+            
+            _client = new SshClient(connectInfo);
+            _client.KeepAliveInterval = TimeSpan.FromSeconds(30);
+            _client.ErrorOccurred += new EventHandler<ExceptionEventArgs>(ClientErrorHandler);
+            _client.HostKeyReceived += new EventHandler<HostKeyEventArgs>(HostKeyReceivedHandler);
             Debug("Attempting connection to: " + hostname + ":" + port);
             try
             {
-                client.Connect();
+                _client.Connect();
+            }
+            catch (SshAuthenticationException e)
+            {
+                Debug("Authentication failed: " + e.Message);
+                Disconnect();
+                return;
             }
             catch (SshConnectionException e)
             {
-                Debug("Connection error: " + e.Message + ", Reason: " + e.DisconnectReason);
+                Debug("Connection error: " + e.Message + ", Reason:  " + e.DisconnectReason);
+                if(e.InnerException != null) Debug("Inner: " +  e.InnerException.Message);
                 Disconnect();
                 return;
             }
 
-            stream = client.CreateShellStream("terminal", 80, 24, 800, 600, 1024);
-            stream.DataReceived += new EventHandler<ShellDataEventArgs>(StreamDataReceivedHandler);
-            stream.ErrorOccurred += new EventHandler<ExceptionEventArgs>(StreamErrorOccurredHandler);
-            if (client.IsConnected)
+            _stream = _client.CreateShellStream("terminal", 80, 24, 800, 600, 1024);
+            _stream.DataReceived += new EventHandler<ShellDataEventArgs>(StreamDataReceivedHandler);
+            _stream.ErrorOccurred += new EventHandler<ExceptionEventArgs>(StreamErrorOccurredHandler);
+            if (_client.IsConnected)
             {
                 Debug("Connected");
-                ConnectionState(Convert.ToUInt16(1));
+                SetConnectionState(1);
+                StartMonitor();
             }
             else
             {
@@ -95,66 +118,120 @@ namespace SSHClientDriver
         public void Disconnect()
         {
             Debug("Disconnect() called.");
-            ConnectionState(Convert.ToUInt16(0));
+            StopMonitor();
+            SetConnectionState(0);
             try
             {
-                if (stream != null)
-                    stream.Dispose();
+                if (_stream != null)
+                {
+                    try
+                    {
+
+                        _stream.DataReceived -= StreamDataReceivedHandler;
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+
+                    try
+                    {
+                        _stream.ErrorOccurred -= StreamErrorOccurredHandler;
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+
+                    try
+                    {
+                        _stream.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug("Stream dispose " + ex.Message);
+                    }
+
+                    _stream = null;
+
+                }
+
             }
             catch (Exception e)
             {
-                Debug("Disconnect() exception occured freeing strea: " + e.Message);
+                Debug("Disconnect() stream exception " + e.Message);
             }
 
             try
             {
-                if (client != null && client.IsConnected)
-                    client.Disconnect();
-                client.Dispose();
+                if (_client == null) return;
+                try
+                {
+                    if (_client.IsConnected) _client.Disconnect();
+                }
+                catch (Exception ex)
+                {
+                    Debug("Client Disconnect: " + ex.Message);
+                }
+                try
+                {
+                    _client.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Debug("Client dispose: " + ex.Message);
+                }
+                _client = null;
             }
             catch (Exception e)
             {
                 Debug("Disconnect() exception occured: " + e.Message);
             }
         }
-
-        public void SendCommand(string Command)
+       public void SendCommand(string command)
         {
-            if (client == null || client.IsConnected == false)
+            if (_client == null || !_client.IsConnected || _stream == null || !_stream.CanWrite)
             {
-                Debug("SendCommand() called, but client is not connected");
-                Disconnect();
+                Debug("SendCommand() not connected");
                 return;
             }
 
-            if (stream != null && stream.CanWrite)
-                stream.WriteLine(Command);
+            try
+            {
+                _stream.WriteLine(command);
+            }
+            catch (Exception e)
+            {
+                Debug("SendCommand error: " + e.Message);
+            }
         }
 
         private void StreamDataReceivedHandler(object sender, ShellDataEventArgs e)
         {
+            _lastRxTicks = DateTime.UtcNow.Ticks;
             var stream = (ShellStream)sender;
             var dataReceived = "";
             while (stream.DataAvailable)
             {
                 dataReceived += stream.Read();
             }
-            if(dataReceived != ""){
-                if (dataReceived.Length > 250)
+
+            if (string.IsNullOrEmpty(dataReceived)) return;
+            if (dataReceived.Length > 250)
+            {
+                foreach (var chunk in SplitDataReceived(dataReceived, 250))
                 {
-                    var dataReceivedArray = SplitDataReceived(dataReceived, 250);
-                    foreach (var str in dataReceivedArray)
-                    {
-                        ReceivedData(str);
-                    }
+                    ReceivedData?.Invoke(chunk);
                 }
-                else ReceivedData(dataReceived);
+
             }
+            else ReceivedData?.Invoke(dataReceived);
         }
 
         private void StreamErrorOccurredHandler(object sender, System.EventArgs e)
         {
             Debug("$SSH Shellstream error " + e.ToString());
+            SetConnectionState(0);
             Disconnect();
 
         }
@@ -175,6 +252,7 @@ namespace SSHClientDriver
         private void ClientErrorHandler(object sender, ExceptionEventArgs e)
         {
             Debug("SSH client error " + e.Exception.Message);
+            SetConnectionState(0);
             Disconnect();
         }
 
@@ -201,6 +279,115 @@ namespace SSHClientDriver
                 strArray.Add(str.Substring(i, maxChuckSize));
             }
             return strArray;
+        }
+
+        private void SetConnectionState(ushort state)
+        {
+            bool changed;
+            lock (_stateLock)
+            {
+                changed = _currentConnState != state;
+                _currentConnState = state;
+            }
+            if (!changed) return;
+            ConnectionState?.Invoke(state);
+            Debug($"ConnectionState -> {state}");
+        }
+
+        private void StartMonitor()
+        {
+            StopMonitor();
+            _lastRxTicks = DateTime.UtcNow.Ticks;
+            _monitorTimer = new CTimer(_ =>
+            {
+                try
+                {
+                    if (_client == null || !_client.IsConnected|| _stream == null)
+                    {
+                        Debug("Monitor: IsConnected == false");
+                        SetConnectionState(0);
+                        Disconnect();
+                        return;
+                    }
+                    var nowTicks = DateTime.UtcNow.Ticks;
+                    var last = (_lastRxTicks == 0) ? nowTicks : _lastRxTicks;
+                    var idleMs = (nowTicks - last) / TimeSpan.TicksPerMillisecond;
+
+
+                    if (idleMs > _idleTimeoutMs)
+                    {
+                        Debug(
+                            $"Monitor: idle {idleMs / 1000.0:0.0}s > {_idleTimeoutMs / 1000.0:0.0}s, sending keepalive");
+                        var ok = TryKeepAlive();
+                        if (!ok)
+                        {
+                            Debug("Monitor: keepalive failed");
+                            SetConnectionState(0);
+                            Disconnect();
+                            return;
+                        }
+
+                        _lastRxTicks = DateTime.UtcNow.Ticks;
+                    }
+
+                    SetConnectionState(1);
+                }
+                catch (Exception ex)
+                {
+                    Debug("Monitor exception: " + ex.Message);
+                    SetConnectionState(0);
+                    Disconnect();
+                }
+            }, null, _monitorIntervalMs,  _monitorIntervalMs);
+        }
+
+        private void StopMonitor()
+        {
+            try
+            {
+                if (_monitorTimer != null)
+                {
+                    _monitorTimer.Stop();
+                    _monitorTimer.Dispose();
+                    _monitorTimer = null;
+                }
+            }
+            catch (Exception e)
+            {
+                // ignored
+            }
+        }
+
+        private bool TryKeepAlive()
+        {
+            try
+            {
+                if (_client != null && _client.IsConnected)
+                {
+                    _client.SendKeepAlive();
+                    return true;
+                }
+
+                return false;
+            }
+            catch
+            {
+                try
+                {
+                    if (_stream != null && _stream.CanWrite)
+                    {
+                        _stream.Write("\n");
+                        _stream.Flush();
+                        return true;
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                return false;
+            }
         }
     }
 }

@@ -9,11 +9,11 @@ DIGITAL_INPUT Use_Parameters;
 DIGITAL_INPUT _SKIP_;
 DIGITAL_INPUT Initialize, Connect, Disconnect, Debug, _SKIP_;
 STRING_INPUT tx$[250], _SKIP_;
-STRING_INPUT Hostname_Override[50], Username_Override[20], Password_Override[20], Debugname_Override[10];
+STRING_INPUT Hostname_Override[50], Username_Override[64], Password_Override[64], Debugname_Override[64];
 ANALOG_INPUT _SKIP_, Port_Override, _SKIP_, _SKIP_;
 STRING_PARAMETER _SKIP_, _SKIP_, _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_;
 STRING_PARAMETER _SKIP_, _SKIP_, _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_;
-STRING_PARAMETER Hostname_Parameter[50], Username_Parameter[20], Password_Parameter[20], Debugname_Parameter[10];
+STRING_PARAMETER Hostname_Parameter[50], Username_Parameter[64], Password_Parameter[64], Debugname_Parameter[64];
 INTEGER_PARAMETER Port_Parameter;
 
 DIGITAL_OUTPUT Initialized_fb, Connected_fb;
@@ -64,11 +64,11 @@ PUSH Disconnect
 }
 PUSH Debug
 {
-	client.debugEnable = 1;
+	client.DebugEnable = 1;
 }
 RELEASE Debug
 {
-	client.debugEnable = 0;
+	client.DebugEnable = 0;
 }
 PUSH Use_Parameters
 {
