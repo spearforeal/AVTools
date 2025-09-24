@@ -4,12 +4,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using Crestron.SimplSharp;
-using Crestron.SimplSharp.Net;
 using Crestron.SimplSharp.Ssh;
 using Crestron.SimplSharp.Ssh.Common;
-using Crestron.SimplSharp.CrestronSockets;
 
 namespace SSHClientDriver
 {
@@ -19,24 +16,30 @@ namespace SSHClientDriver
 
     public delegate void ReceivedDataHandler(SimplSharpString data);
 
-    public class SSHClientDevice
+    public class SshClientDevice
     {
-        private bool _initialized = false;
+        private bool _initialized;
         private SshClient _client;
         private ShellStream _stream;
-        private string username, hostname, password;
-        private int port;
+        private string _username, _hostname, _password;
+        private int _port;
         public InitializedDataHandler InitializedData { get; set; }
         public ConnectionStateHandler ConnectionState { get; set; }
         public ReceivedDataHandler ReceivedData { get; set; }
         private string _debugName;
         public ushort DebugEnable = 0;
         private CTimer _monitorTimer;
-        private long _monitorIntervalMs = 5000;
-        private long _idleTimeoutMs = 30000; 
-        private long _lastRxTicks = 0;
-        private ushort _currentConnState = 0;
+        private const long MonitorIntervalMs = 2000;
+        private const long IdleTimeoutMs = 60000;
+        private long _lastRxTicks;
+        private ushort _currentConnState;
         private readonly object _stateLock = new object();
+        private readonly object _ioLock = new object();
+        private int _missedKeepalives;
+        private const int MaxMisses = 2;
+        private const string HeartbeatToken = "__sshhb__";
+        
+        
         
 
         public void Debug(string message)
@@ -49,10 +52,10 @@ namespace SSHClientDriver
 
         public void Initialize(string hostname, int port, string username, string password, string debugName)
         {
-            this.hostname = hostname;
-            this.port = port;
-            this.username = username;
-            this.password = password;
+            this._hostname = hostname;
+            this._port = port;
+            this._username = username;
+            this._password = password;
             this._debugName = debugName;
 
             Debug($"Initializing SSH client: {hostname}:{port}:{username}:{password}");
@@ -72,16 +75,16 @@ namespace SSHClientDriver
                 return;
             }
 
-            var authMethod = new KeyboardInteractiveAuthenticationMethod(username);
+            var authMethod = new KeyboardInteractiveAuthenticationMethod(_username);
             authMethod.AuthenticationPrompt += AuthenticationPromptHandler;
-            var pwd = new PasswordAuthenticationMethod(username, password);
-            var connectInfo = new ConnectionInfo(hostname, port, username, new AuthenticationMethod[]{pwd, authMethod});
+            var pwd = new PasswordAuthenticationMethod(_username, _password);
+            var connectInfo = new ConnectionInfo(_hostname, _port, _username, new AuthenticationMethod[]{pwd, authMethod});
             
             _client = new SshClient(connectInfo);
-            _client.KeepAliveInterval = TimeSpan.FromSeconds(30);
-            _client.ErrorOccurred += new EventHandler<ExceptionEventArgs>(ClientErrorHandler);
-            _client.HostKeyReceived += new EventHandler<HostKeyEventArgs>(HostKeyReceivedHandler);
-            Debug("Attempting connection to: " + hostname + ":" + port);
+            _client.KeepAliveInterval = TimeSpan.Zero;
+            _client.ErrorOccurred += ClientErrorHandler;
+            _client.HostKeyReceived += HostKeyReceivedHandler;
+            Debug("Attempting connection to: " + _hostname + ":" + _port);
             try
             {
                 _client.Connect();
@@ -101,8 +104,8 @@ namespace SSHClientDriver
             }
 
             _stream = _client.CreateShellStream("terminal", 80, 24, 800, 600, 1024);
-            _stream.DataReceived += new EventHandler<ShellDataEventArgs>(StreamDataReceivedHandler);
-            _stream.ErrorOccurred += new EventHandler<ExceptionEventArgs>(StreamErrorOccurredHandler);
+            _stream.DataReceived += StreamDataReceivedHandler;
+            _stream.ErrorOccurred += StreamErrorOccurredHandler;
             if (_client.IsConnected)
             {
                 Debug("Connected");
@@ -198,7 +201,12 @@ namespace SSHClientDriver
 
             try
             {
-                _stream.WriteLine(command);
+                lock (_ioLock)
+                {
+                    
+                    _stream.WriteLine(command);
+                    _stream.Flush();
+                }
             }
             catch (Exception e)
             {
@@ -208,7 +216,6 @@ namespace SSHClientDriver
 
         private void StreamDataReceivedHandler(object sender, ShellDataEventArgs e)
         {
-            _lastRxTicks = DateTime.UtcNow.Ticks;
             var stream = (ShellStream)sender;
             var dataReceived = "";
             while (stream.DataAvailable)
@@ -217,6 +224,11 @@ namespace SSHClientDriver
             }
 
             if (string.IsNullOrEmpty(dataReceived)) return;
+            _lastRxTicks = DateTime.UtcNow.Ticks;
+            _missedKeepalives = 0;
+            if(dataReceived.IndexOf(HeartbeatToken, StringComparison.Ordinal) >= 0)
+                dataReceived = dataReceived.Replace(HeartbeatToken, string.Empty);
+            if (dataReceived.Length == 0) return;
             if (dataReceived.Length > 250)
             {
                 foreach (var chunk in SplitDataReceived(dataReceived, 250))
@@ -228,9 +240,26 @@ namespace SSHClientDriver
             else ReceivedData?.Invoke(dataReceived);
         }
 
-        private void StreamErrorOccurredHandler(object sender, System.EventArgs e)
+        private void SendHeartBeat()
         {
-            Debug("$SSH Shellstream error " + e.ToString());
+            try
+            {
+                if (_stream == null || !_stream.CanWrite) return;
+                lock (_ioLock)
+                {
+                    _stream.WriteLine("echo " + HeartbeatToken);
+                    _stream.Flush();
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        private void StreamErrorOccurredHandler(object sender, EventArgs e)
+        {
+            Debug("$SSH Shellstream error " + e);
             SetConnectionState(0);
             Disconnect();
 
@@ -238,9 +267,9 @@ namespace SSHClientDriver
         private void AuthenticationPromptHandler(object sender, AuthenticationPromptEventArgs e)
         {
             Debug("Sending password");
-            foreach (AuthenticationPrompt prompt in e.Prompts)
+            foreach (var prompt in e.Prompts)
             {
-                prompt.Response = password;
+                prompt.Response = _password;
 
             }
         }
@@ -264,21 +293,12 @@ namespace SSHClientDriver
             }
         }
 
-        private List<string> SplitDataReceived(string str, int maxChuckSize, int i)
+        private List<string> SplitDataReceived(string str, int maxChuckSize, int startIndex)
         {
-            var stringLength = str.Length;
-            var strArray = new List<string>();
-            for (i = 0; i < stringLength; i += maxChuckSize)
-            {
-                if (i + maxChuckSize > stringLength)
-                {
-                    maxChuckSize = stringLength - i;
-
-                }
-
-                strArray.Add(str.Substring(i, maxChuckSize));
-            }
-            return strArray;
+            var result = new List<string>();
+            for(var idx = startIndex; idx < str.Length; idx += maxChuckSize)
+                result.Add(str.Substring(idx, Math.Min(maxChuckSize, str.Length - idx)));
+            return result;
         }
 
         private void SetConnectionState(ushort state)
@@ -304,7 +324,7 @@ namespace SSHClientDriver
                 {
                     if (_client == null || !_client.IsConnected|| _stream == null)
                     {
-                        Debug("Monitor: IsConnected == false");
+                        Debug("Monitor: not connected");
                         SetConnectionState(0);
                         Disconnect();
                         return;
@@ -314,20 +334,20 @@ namespace SSHClientDriver
                     var idleMs = (nowTicks - last) / TimeSpan.TicksPerMillisecond;
 
 
-                    if (idleMs > _idleTimeoutMs)
+                    if (idleMs > IdleTimeoutMs)
                     {
+                        _missedKeepalives++;
                         Debug(
-                            $"Monitor: idle {idleMs / 1000.0:0.0}s > {_idleTimeoutMs / 1000.0:0.0}s, sending keepalive");
-                        var ok = TryKeepAlive();
-                        if (!ok)
+                            $"Monitor: idle {idleMs / 1000.0:0.0}s (> {IdleTimeoutMs / 1000.0:0.0}s) miss #{_missedKeepalives}; sending heartbeat");
+                        SendHeartBeat();
+                        if (_missedKeepalives >= MaxMisses)
                         {
-                            Debug("Monitor: keepalive failed");
+                            Debug("Monitor: heartbeat missed exceeded. Forcing disconnect");
                             SetConnectionState(0);
                             Disconnect();
                             return;
                         }
 
-                        _lastRxTicks = DateTime.UtcNow.Ticks;
                     }
 
                     SetConnectionState(1);
@@ -338,55 +358,21 @@ namespace SSHClientDriver
                     SetConnectionState(0);
                     Disconnect();
                 }
-            }, null, _monitorIntervalMs,  _monitorIntervalMs);
+            }, null, MonitorIntervalMs,  MonitorIntervalMs);
         }
 
         private void StopMonitor()
         {
             try
             {
-                if (_monitorTimer != null)
-                {
-                    _monitorTimer.Stop();
-                    _monitorTimer.Dispose();
-                    _monitorTimer = null;
-                }
+                if (_monitorTimer == null) return;
+                _monitorTimer.Stop();
+                _monitorTimer.Dispose();
+                _monitorTimer = null;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 // ignored
-            }
-        }
-
-        private bool TryKeepAlive()
-        {
-            try
-            {
-                if (_client != null && _client.IsConnected)
-                {
-                    _client.SendKeepAlive();
-                    return true;
-                }
-
-                return false;
-            }
-            catch
-            {
-                try
-                {
-                    if (_stream != null && _stream.CanWrite)
-                    {
-                        _stream.Write("\n");
-                        _stream.Flush();
-                        return true;
-                    }
-                }
-                catch
-                {
-                    // ignored
-                }
-
-                return false;
             }
         }
     }

@@ -21,7 +21,7 @@ STRING_OUTPUT _SKIP_,_SKIP_,_SKIP_, rx$, _SKIP_;
 
 integer connected;
 integer method;
-SSHClientDevice client;
+SshClientDevice client;
 function RegisterDelegates()
 {
 	RegisterDelegate(client, InitializedData, InitializedDataHandler);
