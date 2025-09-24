@@ -76,6 +76,13 @@ DIGITAL_OUTPUT _SKIP_;
 DIGITAL_OUTPUT Menu12Sub_fb[12];
 
 INTEGER x;
+Function fnCloseAllFooters()
+{
+	for(x = 1 to 7)
+	{
+		Footer_fb[x] = 0;
+	}
+}
 Function fnCloseAllPages()
 {
 	for(x = 1 to 12)
@@ -247,6 +254,11 @@ PUSH Footer
 		if (Footer[x])Footer_fb[x] = 1;
 		else Footer_fb[x] = 0;
 	}
+}
+PUSH FooterClose
+{
+	fnCloseAllFooters();
+	
 }
 Function Main()
 {
