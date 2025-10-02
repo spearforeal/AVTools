@@ -1,0 +1,180 @@
+#SYMBOL_NAME "PresetManager_v0"
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+#USER_SIMPLSHARP_LIBRARY "PresetDriver"
+
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Initialize, Debug, Save, Recall;
+DIGITAL_INPUT _SKIP_; 
+DIGITAL_INPUT Preset[5];
+DIGITAL_INPUT _SKIP_; 
+ANALOG_INPUT  Window_Preset_Value;
+ANALOG_INPUT _SKIP_;
+ANALOG_INPUT  Destination_Value[8];
+STRING_PARAMETER DebugName[64];
+
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Initialized_fb, PresetSaved_fb, Preset_fb[5];
+DIGITAL_OUTPUT _SKIP_;
+ANALOG_OUTPUT Window_Proc_Out;
+ANALOG_OUTPUT _SKIP_;
+ANALOG_OUTPUT Destination_Out[8];
+
+
+PresetClient client;
+INTEGER gLastPresetIdx;
+INTEGER gDbg;
+INTEGER gDirtyMask;   // bit 0=window, bits 1..8 = dest1..dest8
+INTEGER gBit[9];      // powers of two for safe masking
+
+//********************************Delegates******************************************
+function RegisterDelegates()
+{
+	RegisterDelegate(client, Initialized,OnInitializeEvent);
+	RegisterDelegate(client, WindowPresetChanged, OnWindowPresetEvent);
+	RegisterDelegate(client, Output1Changed, OnOut1);
+	RegisterDelegate(client, Output2Changed, OnOut2);
+	RegisterDelegate(client, Output3Changed, OnOut3);
+	RegisterDelegate(client, Output4Changed, OnOut4);
+	RegisterDelegate(client, Output5Changed, OnOut5);
+	RegisterDelegate(client, Output6Changed, OnOut6);
+	RegisterDelegate(client, Output7Changed, OnOut7);
+	RegisterDelegate(client, Output8Changed, OnOut8);
+}
+//********************************Callback Functions******************************************
+callback function OnOut1(INTEGER v) { Destination_Out[1] = v; if (gDbg) PRINT("[%s] Out1=%d", DebugName, v); }
+callback function OnOut2(INTEGER v) { Destination_Out[2] = v; if (gDbg) PRINT("[%s] Out2=%d", DebugName, v); }
+callback function OnOut3(INTEGER v) { Destination_Out[3] = v; if (gDbg) PRINT("[%s] Out3=%d", DebugName, v); }
+callback function OnOut4(INTEGER v) { Destination_Out[4] = v; if (gDbg) PRINT("[%s] Out4=%d", DebugName, v); }
+callback function OnOut5(INTEGER v) { Destination_Out[5] = v; if (gDbg) PRINT("[%s] Out5=%d", DebugName, v); }
+callback function OnOut6(INTEGER v) { Destination_Out[6] = v; if (gDbg) PRINT("[%s] Out6=%d", DebugName, v); }
+callback function OnOut7(INTEGER v) { Destination_Out[7] = v; if (gDbg) PRINT("[%s] Out7=%d", DebugName, v); }
+callback function OnOut8(INTEGER v) { Destination_Out[8] = v; if (gDbg) PRINT("[%s] Out8=%d", DebugName, v); }
+
+callback function OnInitializeEvent(INTEGER state)
+{
+	Initialized_fb = state;
+	if (gDbg) PRINT("[%s] Initialized=%d", DebugName, state);
+	
+}
+callback function OnWindowPresetEvent(INTEGER value)
+{
+	Window_Proc_Out = value;
+	if (gDbg) PRINT("[%s] WindowPreset=%d", DebugName, value);
+}
+
+function InitBits()
+{
+	INTEGER i;
+	gBit[0] = 1;
+	for (i = 1 to 8) gBit[i] = gBit[i-1] * 2; // 1,2,4,8,...256
+}
+//********************************Inputs******************************************
+PUSH Initialize
+{
+	client.Initialize(DebugName);
+	if (gDbg) PRINT("[%s] Initialize pressed", DebugName);
+	gDirtyMask = 0;
+	
+}
+
+PUSH Debug
+{
+	gDbg = 1;
+	client.DebugEnable = 1; 
+	PRINT("[%s] Debug ON", DebugName);
+}
+RELEASE Debug
+{
+	PRINT("[%s] Debug OFF", DebugName);
+	gDbg= 0;
+	client.DebugEnable = 0;
+}
+
+PUSH Recall
+{
+	if (gLastPresetIdx >= 1 && gLastPresetIdx <= 5)
+	{
+		client.RecallPresetByIndex(gLastPresetIdx);
+		if (gDbg) PRINT("[%s] Recall idx=%d", DebugName, gLastPresetIdx);
+	}
+	else
+	{
+		PRINT("[%s] Recall pressed with no preset selected", DebugName);
+	}
+}
+PUSH Save
+{
+	INTEGER rc;
+	if (gDbg) PRINT("[%s] Save pressed", DebugName);
+	rc = client.OverwriteCurrentPreset8Masked(
+		Window_Preset_Value, gDirtyMask, Destination_Value[1], Destination_Value[2], Destination_Value[3], Destination_Value[4],
+		Destination_Value[5], Destination_Value[6], Destination_Value[7], Destination_Value[8]);
+	
+	
+	if(rc <> 0)
+	{
+		PresetSaved_fb = 1;
+		Wait(100){PresetSaved_fb = 0;}
+		if (gDbg) PRINT("[%s] SavePresets OK", DebugName);
+		gDirtyMask = 0; // we just committed changes
+		
+		
+	}
+	else
+	{
+		if (gDbg) PRINT("[%s] SavePresets FAILED", DebugName);
+		
+	}
+}
+
+PUSH Preset
+{
+	INTEGER x, i;
+	x = GetLastModifiedArrayIndex();
+	gLastPresetIdx = x;
+	for (i = 1 to 5) 
+	{	if(i = x) 
+		{
+			
+			Preset_fb[i] = 1; 
+		}
+		else
+		{
+			Preset_fb[i] = 0;
+		}
+		
+	}
+	client.RecallPresetByIndex(x);
+	if (gDbg) PRINT("[%s] Preset press -> recall %d", DebugName, x);
+	gDirtyMask = 0; // new base, no pending edits
+	
+}
+
+CHANGE Window_Preset_Value
+{
+	Window_Proc_Out = Window_Preset_Value;
+	gDirtyMask = gDirtyMask | gBit[0]; // mark window edited
+	if (gDbg) PRINT("[%s] Window edit -> %d", DebugName, Window_Preset_Value);
+	
+}
+CHANGE Destination_Value
+{
+	INTEGER x; 
+	x = GetLastModifiedArrayIndex();
+	if(x >= 1 && x <= 8)
+	{
+		Destination_Out[x] = Destination_Value[x];
+		gDirtyMask = gDirtyMask | gBit[x]; // mark that channel edited
+		if (gDbg) PRINT("[%s] Dest[%d] edit -> %d", DebugName, x, Destination_Value[x]);
+		
+	}
+}
+//********************************Main******************************************
+function Main()
+{
+	WaitForInitializationComplete();
+	InitBits();
+	RegisterDelegates();
+}
