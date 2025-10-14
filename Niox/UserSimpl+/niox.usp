@@ -1,0 +1,167 @@
+#SYMBOL_NAME "Niox_v0"
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+// #DEFINE_CONSTANT ALL_CHANNEL     1
+// #DEFINE_CONSTANT STEP_PCT        5
+// #DEFINE_CONSTANT INIT_DELAY_CS   30   
+// #DEFINE_CONSTANT REPEAT_CS       8    
+
+// =====Inputs=====
+DIGITAL_INPUT  Debug;
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Up, Down, AllOn, AllOff;
+DIGITAL_INPUT  Scene[4];
+
+// =====Outputs=====
+
+DIGITAL_OUTPUT  Debug_fb, _SKIP_;
+STRING_OUTPUT  Tx$;        
+
+// =======Params====
+integer_parameter _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
+
+ALL_CHANNEL, STEP_PCT, INIT_DELAY_CS, REPEAT_CS; 
+// ===== State =====
+INTEGER holdUp, holdDown, DebugEnable;
+#BEGIN_PARAMETER_PROPERTIES ALL_CHANNEL
+propDefaultUnit = unitDecimal;			
+propValidUnits = unitDecimal;		
+propShortDescription = "Channel used for group actions";
+propDefaultValue = 1d; 
+#END_PARAMETER_PROPERTIES
+#BEGIN_PARAMETER_PROPERTIES STEP_PCT
+propDefaultUnit = unitDecimal;			
+propValidUnits = unitDecimal;		
+propShortDescription = "Percent per step for Up/Down";
+propDefaultValue = 5d; 
+#END_PARAMETER_PROPERTIES
+#BEGIN_PARAMETER_PROPERTIES INIT_DELAY_CS
+propDefaultUnit = unitDecimal;			
+propValidUnits = unitDecimal;		
+propShortDescription = "Press & Hold start delay";
+propDefaultValue = 30d; 
+#END_PARAMETER_PROPERTIES
+#BEGIN_PARAMETER_PROPERTIES REPEAT_CS
+propDefaultUnit = unitDecimal;			
+propValidUnits = unitDecimal;		
+propShortDescription = "Repear rate while holding";
+propDefaultValue = 8d; 
+#END_PARAMETER_PROPERTIES
+
+// ===== Low-level send helpers =====
+FUNCTION SendScene(INTEGER n)
+{
+	INTEGER b0, b1, b2, b3, ck1, ck2;
+	b0 = 165;  b1 = 6;  b2 = 133;  b3 = n;
+	ck1 = (b0 ^ b2) ^ 255;
+	ck2 = (b1 ^ b3) ^ 255;
+	MakeString(Tx$, "%c%c%c%c%c%c",
+		(b0 & 255),(b1 & 255),(b2 & 255),(b3 & 255),(ck1 & 255),(ck2 & 255));
+}
+
+FUNCTION SendExert(INTEGER ch, INTEGER action, INTEGER amount)
+{
+	INTEGER b0, b1, b2, b3, b4, b5, ck1, ck2;
+	b0 = 165;  b1 = 8;  b2 = 122;  b3 = ch;  b4 = action;  b5 = amount;
+	ck1 = (b0 ^ b2 ^ b4) ^ 255;
+	ck2 = (b1 ^ b3 ^ b5) ^ 255;
+	MakeString(Tx$, "%c%c%c%c%c%c%c%c",
+		(b0 & 255),(b1 & 255),(b2 & 255),(b3 & 255),
+		(b4 & 255),(b5 & 255),(ck1 & 255),(ck2 & 255));
+}
+
+FUNCTION StepUp()   { SendExert(ALL_CHANNEL, 3, STEP_PCT); }
+FUNCTION StepDown() { SendExert(ALL_CHANNEL, 4, STEP_PCT); }
+FUNCTION AllOnFunc() { SendExert(ALL_CHANNEL, 1, 0); } // 1 = On
+FUNCTION AllOffFunc() { SendExert(ALL_CHANNEL, 2, 0); } // 2 = Off
+FUNCTION SetDebug(INTEGER val)
+{
+	DebugEnable = (val <> 0);
+	Debug_fb = DebugEnable;
+}
+
+// ===== Repeat engines =====
+FUNCTION UpTick()
+{
+	IF (holdUp)
+	{
+		StepUp();
+		WAIT (REPEAT_CS, UpRepeat) { UpTick(); }
+	}
+}
+
+FUNCTION DownTick()
+{
+	IF (holdDown)
+	{
+		StepDown();
+		WAIT (REPEAT_CS, DownRepeat) { DownTick(); }  
+	}
+}
+
+
+// ===== Handlers =====
+PUSH Scene
+{
+	INTEGER idx;
+	idx = GetLastModifiedArrayIndex();
+	IF ((idx >= 1) && (idx <= 4)) { SendScene(idx); }
+}
+
+PUSH Up
+{
+	holdUp = 1;
+	StepUp();
+	WAIT (INIT_DELAY_CS, UpStart) { UpTick(); }
+}
+RELEASE Up
+{
+	holdUp = 0;
+	CancelWait(UpStart);
+	CancelWait(UpRepeat);
+}
+
+PUSH Down
+{
+	holdDown = 1;
+	StepDown();
+	WAIT (INIT_DELAY_CS, DownStart) { DownTick(); }
+}
+RELEASE Down
+{
+	holdDown = 0;
+	CancelWait(DownStart);
+	CancelWait(DownRepeat);
+}
+FUNCTION KillWaits()
+{
+	holdUp = 0;
+	holdDown = 0;
+	CancelWait(UpStart);
+	CancelWait(UpRepeat);
+	CancelWait(DownStart);
+	CancelWait(DownRepeat);
+}
+PUSH AllOn
+{
+	KillWaits();
+	AllOnFunc();
+	
+}
+PUSH AllOff
+{
+	KillWaits();
+	AllOffFunc();
+	
+}
+PUSH Debug
+{
+	SetDebug(1);
+}
+RELEASE Debug
+{
+	SetDebug(0);
+}

@@ -24,8 +24,8 @@ namespace PresetDriver
         
         private bool _initialized;
         private string _debugName;
-        public ushort DebugEnable = 1;
-        private readonly PresetFileManager _fm = new PresetFileManager();
+        public ushort DebugEnable = 0;
+        private readonly PresetFileManager _fm;
         public string _fileName = "advance.json";
         private Dictionary<string, PresetRecord> _presets = new Dictionary<string, PresetRecord>();
         private List<string> _presetNames = new List<string>();
@@ -57,6 +57,7 @@ namespace PresetDriver
         public PresetClient()
         {
             //CrestronConsole.PrintLine("[PresetManager] ctor filePath='{0}'", _fm.FileName);
+            _fm = new PresetFileManager(msg => Debug(msg));
        
         }
 
@@ -442,7 +443,21 @@ namespace PresetDriver
 
     public sealed class PresetFileManager
     {
+        private readonly Action<string> _log;
         public string FileName { get; private set; }
+
+        public PresetFileManager(Action<string> log = null)
+        {
+            _log = log;
+        }
+
+        private void Log(string m)
+        {
+            _log?.Invoke(m);
+        }
+
+        private void Log(string fmt, params object[] args) => _log?.Invoke(string.Format(fmt, args));
+        
 
         public void Initialize(string file)
         {
@@ -457,7 +472,7 @@ namespace PresetDriver
             if (!root.EndsWith("/")) root += "/";
 
             FileName = root + file.Replace('\\','/').TrimStart('/');
-            CrestronConsole.PrintLine("[PresetFileManager] root='{0}' file='{1}' -> '{2}'",
+            Log("[PresetFileManager] root='{0}' file='{1}' -> '{2}'",
                 root, file, FileName);
         }
         public bool Exists() => !string.IsNullOrWhiteSpace(FileName) && File.Exists(FileName);
@@ -472,7 +487,7 @@ namespace PresetDriver
         {
             EnsureDirectory();
             var len = content?.Length ?? 0;
-            CrestronConsole.PrintLine("[PresetFileManager] WriteAll path='{0}' len={1}", FileName, len);
+            Log("[PresetFileManager] WriteAll path='{0}' len={1}", FileName, len);
             using (var fs = new FileStream(FileName, FileMode.Create, FileAccess.Write))
             using (var sw = new StreamWriter(fs))
                 sw.Write(content);
@@ -480,13 +495,13 @@ namespace PresetDriver
             {
                 var fi = new FileInfo(FileName);
                 fi.Refresh();
-                CrestronConsole.PrintLine("[PresetFileManager] Verify exists={0} size={1}", fi.Exists, fi.Exists ? fi.Length : 0);
+                Log("[PresetFileManager] Verify exists={0} size={1}", fi.Exists, fi.Exists ? fi.Length : 0);
             }
             catch { /* best-effort */ }
         } 
         public string ReadAll()
         {
-            CrestronConsole.PrintLine("[PresetFileManager] ReadAll path='{0}'", FileName);
+            Log("[PresetFileManager] ReadAll path='{0}'", FileName);
 
             using (var fs = new FileStream(FileName, FileMode.Open, FileAccess.Read))
             using (var sr = new StreamReader(fs))

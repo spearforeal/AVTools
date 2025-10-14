@@ -204,7 +204,7 @@ PUSH Menu7Sub
 	for(x = 1 to 12)
 	{
 		if(Menu7Sub[x])Menu7Sub_fb[x] = 1;
-		else Menu7Sub_fb[x] = 1;
+		else Menu7Sub_fb[x] = 0;
 	}
 }	
 PUSH Menu8Sub

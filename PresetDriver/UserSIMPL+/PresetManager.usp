@@ -177,4 +177,5 @@ function Main()
 	WaitForInitializationComplete();
 	InitBits();
 	RegisterDelegates();
+	client.Initialize(DebugName);
 }

@@ -1,0 +1,56 @@
+#SYMBOL_NAME "AnalogRouter_v0" #DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+#DEFINE_CONSTANT NUM 20
+
+
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT Source0;
+DIGITAL_INPUT Source[NUM];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_INPUT DestSel[NUM];
+DIGITAL_INPUT _SKIP_;
+DIGITAL_OUTPUT _SKIP_;
+DIGITAL_OUTPUT Source0_fb;
+DIGITAL_OUTPUT Source_fb[NUM];
+ANALOG_OUTPUT Dest[NUM];
+INTEGER SourceValue;
+function SetFeedback(INTEGER srcIndex)
+{
+	INTEGER i;
+	for(i = 1 to NUM)
+	{
+		Source_fb[i] = 0;
+	}
+	if(srcIndex = 0)
+	{
+		Source0_fb = 1;
+	}
+	else
+	{
+		Source0_fb = 0;
+		Source_fb[srcIndex] = 1;
+	}
+	
+}
+function RouteToDest(INTEGER d)
+{
+	Dest[d] = SourceValue;
+}
+PUSH Source0{
+	SourceValue = 0;
+	SetFeedback(SourceValue);
+}
+PUSH Source
+{
+	INTEGER n;
+	n = GetLastModifiedArrayIndex();
+	SourceValue = n;
+	SetFeedback(n);
+}
+PUSH DestSel
+{
+	INTEGER n;
+	n = GetLastModifiedArrayIndex();
+	RouteToDest(n);
+}
