@@ -1,38 +1,46 @@
-#SYMBOL_NAME "PresetManager_v0"
+#SYMBOL_NAME "PresetManager_v0.1"
 #DEFAULT_VOLATILE
 #ENABLE_STACK_CHECKING
 #ENABLE_TRACE
 #USER_SIMPLSHARP_LIBRARY "PresetDriver"
 
 DIGITAL_INPUT _SKIP_;
+STRING_INPUT FileName$[128];
 DIGITAL_INPUT Initialize, Debug, Save, Recall;
 DIGITAL_INPUT _SKIP_; 
 DIGITAL_INPUT Preset[5];
 DIGITAL_INPUT _SKIP_; 
-ANALOG_INPUT  Window_Preset_Value;
+
+ANALOG_INPUT  Window_Preset1_Value;
+ANALOG_INPUT  Window_Preset2_Value;
 ANALOG_INPUT _SKIP_;
-ANALOG_INPUT  Destination_Value[8];
+
+ANALOG_INPUT  Destination_Value[20];
 STRING_PARAMETER DebugName[64];
 
 DIGITAL_OUTPUT _SKIP_;
 DIGITAL_OUTPUT Initialized_fb, PresetSaved_fb, Preset_fb[5];
 DIGITAL_OUTPUT _SKIP_;
-ANALOG_OUTPUT Window_Proc_Out;
+ANALOG_OUTPUT Window_Proc1_Out;
+ANALOG_OUTPUT Window_Proc2_Out;
 ANALOG_OUTPUT _SKIP_;
-ANALOG_OUTPUT Destination_Out[8];
+ANALOG_OUTPUT Destination_Out[20];
 
 
 PresetClient client;
 INTEGER gLastPresetIdx;
 INTEGER gDbg;
 INTEGER gDirtyMask;   // bit 0=window, bits 1..8 = dest1..dest8
-INTEGER gBit[9];      // powers of two for safe masking
+INTEGER gBit[22];      // powers of two for safe masking
+INTEGER gHasFilename;
 
 //********************************Delegates******************************************
 function RegisterDelegates()
 {
 	RegisterDelegate(client, Initialized,OnInitializeEvent);
-	RegisterDelegate(client, WindowPresetChanged, OnWindowPresetEvent);
+	RegisterDelegate(client, WindowPresetChanged, OnWindow1Event);
+	RegisterDelegate(client, WindowPreset2Changed, OnWindow2Event);
+	
 	RegisterDelegate(client, Output1Changed, OnOut1);
 	RegisterDelegate(client, Output2Changed, OnOut2);
 	RegisterDelegate(client, Output3Changed, OnOut3);
@@ -41,6 +49,18 @@ function RegisterDelegates()
 	RegisterDelegate(client, Output6Changed, OnOut6);
 	RegisterDelegate(client, Output7Changed, OnOut7);
 	RegisterDelegate(client, Output8Changed, OnOut8);
+	RegisterDelegate(client, Output9Changed, OnOut9);
+	RegisterDelegate(client, Output10Changed, OnOut10);
+	RegisterDelegate(client, Output11Changed, OnOut11);
+	RegisterDelegate(client, Output12Changed, OnOut12);
+	RegisterDelegate(client, Output13Changed, OnOut13);
+	RegisterDelegate(client, Output14Changed, OnOut14);
+	RegisterDelegate(client, Output15Changed, OnOut15);
+	RegisterDelegate(client, Output16Changed, OnOut16);
+	RegisterDelegate(client, Output17Changed, OnOut17);
+	RegisterDelegate(client, Output18Changed, OnOut18);
+	RegisterDelegate(client, Output19Changed, OnOut19);
+	RegisterDelegate(client, Output20Changed, OnOut20);
 }
 //********************************Callback Functions******************************************
 callback function OnOut1(INTEGER v) { Destination_Out[1] = v; if (gDbg) PRINT("[%s] Out1=%d", DebugName, v); }
@@ -51,28 +71,47 @@ callback function OnOut5(INTEGER v) { Destination_Out[5] = v; if (gDbg) PRINT("[
 callback function OnOut6(INTEGER v) { Destination_Out[6] = v; if (gDbg) PRINT("[%s] Out6=%d", DebugName, v); }
 callback function OnOut7(INTEGER v) { Destination_Out[7] = v; if (gDbg) PRINT("[%s] Out7=%d", DebugName, v); }
 callback function OnOut8(INTEGER v) { Destination_Out[8] = v; if (gDbg) PRINT("[%s] Out8=%d", DebugName, v); }
+callback function OnOut9(INTEGER v) { Destination_Out[9] = v; if (gDbg) PRINT("[%s] Out9=%d", DebugName, v); }
+callback function OnOut10(INTEGER v) { Destination_Out[10] = v; if (gDbg) PRINT("[%s] Out10=%d", DebugName, v); }
+callback function OnOut11(INTEGER v) { Destination_Out[11] = v; if (gDbg) PRINT("[%s] Out11=%d", DebugName, v); }
+callback function OnOut12(INTEGER v) { Destination_Out[12] = v; if (gDbg) PRINT("[%s] Out12=%d", DebugName, v); }
+callback function OnOut13(INTEGER v) { Destination_Out[13] = v; if (gDbg) PRINT("[%s] Out13=%d", DebugName, v); }
+callback function OnOut14(INTEGER v) { Destination_Out[14] = v; if (gDbg) PRINT("[%s] Out14=%d", DebugName, v); }
+callback function OnOut15(INTEGER v) { Destination_Out[15] = v; if (gDbg) PRINT("[%s] Out15=%d", DebugName, v); }
+callback function OnOut16(INTEGER v) { Destination_Out[16] = v; if (gDbg) PRINT("[%s] Out16=%d", DebugName, v); }
+callback function OnOut17(INTEGER v) { Destination_Out[17] = v; if (gDbg) PRINT("[%s] Out17=%d", DebugName, v); }
+callback function OnOut18(INTEGER v) { Destination_Out[18] = v; if (gDbg) PRINT("[%s] Out18=%d", DebugName, v); }
+callback function OnOut19(INTEGER v) { Destination_Out[19] = v; if (gDbg) PRINT("[%s] Out19=%d", DebugName, v); }
+callback function OnOut20(INTEGER v) { Destination_Out[20] = v; if (gDbg) PRINT("[%s] Out20=%d", DebugName, v); }
 
 callback function OnInitializeEvent(INTEGER state)
 {
+	Initialized_fb = 0;
 	Initialized_fb = state;
 	if (gDbg) PRINT("[%s] Initialized=%d", DebugName, state);
 	
 }
-callback function OnWindowPresetEvent(INTEGER value)
+callback function OnWindow1Event(INTEGER value)
 {
-	Window_Proc_Out = value;
-	if (gDbg) PRINT("[%s] WindowPreset=%d", DebugName, value);
+	Window_Proc1_Out = value;
+	if (gDbg) PRINT("[%s] Window1Preset=%d", DebugName, value);
+}
+callback function OnWindow2Event(INTEGER value)
+{
+	Window_Proc2_Out = value;
+	if (gDbg) PRINT("[%s] Window1Preset=%d", DebugName, value);
 }
 
 function InitBits()
 {
 	INTEGER i;
 	gBit[0] = 1;
-	for (i = 1 to 8) gBit[i] = gBit[i-1] * 2; // 1,2,4,8,...256
+	for (i = 1 to 21) gBit[i] = gBit[i-1] * 2; // 1,2,4,8,...256
 }
 //********************************Inputs******************************************
 PUSH Initialize
 {
+	if(gHasFilename) client.SetFileName(FileName$);
 	client.Initialize(DebugName);
 	if (gDbg) PRINT("[%s] Initialize pressed", DebugName);
 	gDirtyMask = 0;
@@ -108,9 +147,12 @@ PUSH Save
 {
 	INTEGER rc;
 	if (gDbg) PRINT("[%s] Save pressed", DebugName);
-	rc = client.OverwriteCurrentPreset8Masked(
-		Window_Preset_Value, gDirtyMask, Destination_Value[1], Destination_Value[2], Destination_Value[3], Destination_Value[4],
-		Destination_Value[5], Destination_Value[6], Destination_Value[7], Destination_Value[8]);
+	rc = client.OverwriteCurrentPreset20Masked(
+		Window_Preset1_Value, Window_Preset2_Value,  gDirtyMask,
+		Destination_Value[1], Destination_Value[2], Destination_Value[3], Destination_Value[4],
+		Destination_Value[5], Destination_Value[6], Destination_Value[7], Destination_Value[8], Destination_Value[9], Destination_Value[10],
+		Destination_Value[11], Destination_Value[12], Destination_Value[13], Destination_Value[14], Destination_Value[15], Destination_Value[16],
+		Destination_Value[17], Destination_Value[18], Destination_Value[19], Destination_Value[20]);
 	
 	
 	if(rc <> 0)
@@ -152,23 +194,46 @@ PUSH Preset
 	
 }
 
-CHANGE Window_Preset_Value
+CHANGE Window_Preset1_Value
 {
-	Window_Proc_Out = Window_Preset_Value;
+	Window_Proc1_Out = Window_Preset1_Value;
 	gDirtyMask = gDirtyMask | gBit[0]; // mark window edited
-	if (gDbg) PRINT("[%s] Window edit -> %d", DebugName, Window_Preset_Value);
+	if (gDbg) PRINT("[%s] Window edit -> %d", DebugName, Window_Preset1_Value);
+	
+}
+CHANGE Window_Preset2_Value
+{
+	Window_Proc2_Out = Window_Preset2_Value;
+	gDirtyMask = gDirtyMask | gBit[1]; // mark window edited
+	if (gDbg) PRINT("[%s] Window edit -> %d", DebugName, Window_Preset2_Value);
 	
 }
 CHANGE Destination_Value
 {
 	INTEGER x; 
 	x = GetLastModifiedArrayIndex();
-	if(x >= 1 && x <= 8)
+	if(x >= 1 && x <= 20)
 	{
 		Destination_Out[x] = Destination_Value[x];
-		gDirtyMask = gDirtyMask | gBit[x]; // mark that channel edited
+		gDirtyMask = gDirtyMask | gBit[x + 1]; // mark that channel edited
 		if (gDbg) PRINT("[%s] Dest[%d] edit -> %d", DebugName, x, Destination_Value[x]);
 		
+	}
+}
+CHANGE FileName$
+{
+	gHasFilename = (LEN(FileName$) > 0);
+	if(gHasFilename)
+	{
+		client.SetFileName(FileName$);
+		if(gDbg)
+		{
+			PRINT("[%s] FileName set - > %s", DebugName, FileName$);
+		}
+		else
+		{
+			if(gDbg) PRINT("[%s] FileName cleared; will fall back to default", DebugName);
+		}
 	}
 }
 //********************************Main******************************************
@@ -177,5 +242,11 @@ function Main()
 	WaitForInitializationComplete();
 	InitBits();
 	RegisterDelegates();
+	if(LEN(FileName$) > 0)
+	{
+		gHasFilename = 1;
+		client.SetFileName(FileName$);
+		if(gDbg) PRINT("[%s] Main: FileName primed -> %s", DebugName, FileName$);
+	}
 	client.Initialize(DebugName);
 }
