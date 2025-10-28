@@ -20,6 +20,7 @@
   Name=RoomCombiner_v0
   SmplCName=RoomCombiner.usp
   Code=1
+  SysRev5=3.090
   InputCue1=[~UNUSED~]
   InputSigType1=Digital
   InputCue2=Separate

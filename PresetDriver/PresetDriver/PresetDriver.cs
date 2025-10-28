@@ -32,6 +32,8 @@ namespace PresetDriver
         private string _currentPreset;
         public InitializedEvent Initialized { get; set; }
         public  WindowPresetChangedDelegate WindowPresetChanged { get; set; }
+        public  WindowPresetChangedDelegate WindowPreset2Changed { get; set; }
+        
         public OutputValueChangedDelegate  OutputValueChanged { get; set; }
         public PresetCountHandler OnPresetCount { get; set; }
         public PresetNameHandler OnPresetName { get; set; }  
@@ -43,15 +45,35 @@ namespace PresetDriver
         public UshortValue Output6Changed { get; set; }
         public UshortValue Output7Changed { get; set; }
         public UshortValue Output8Changed { get; set; }
+        public UshortValue Output9Changed  { get; set; }
+        public UshortValue Output10Changed { get; set; }
+        public UshortValue Output11Changed { get; set; }
+        public UshortValue Output12Changed { get; set; }
+        public UshortValue Output13Changed { get; set; }
+        public UshortValue Output14Changed { get; set; }
+        public UshortValue Output15Changed { get; set; }
+        public UshortValue Output16Changed { get; set; }
+        public UshortValue Output17Changed { get; set; }
+        public UshortValue Output18Changed { get; set; }
+        public UshortValue Output19Changed { get; set; }
+        public UshortValue Output20Changed { get; set; }
+
+        private UshortValue[] OutputTaps() => new UshortValue[]
+        {
+            Output1Changed, Output2Changed,  Output3Changed, Output4Changed, Output5Changed,
+            Output6Changed, Output7Changed, Output8Changed, Output9Changed, Output10Changed,
+            Output11Changed, Output12Changed, Output13Changed, Output14Changed, Output15Changed,
+            Output16Changed,  Output17Changed,  Output18Changed,  Output19Changed,  Output20Changed
+        };
 
         private const string DefaultJson =
             @"{
   ""presets"": {
-    ""Preset1"": { ""windowPreset"": 1, ""outputs"": [0,0,0,1,2,4,1,0] },
-    ""Preset2"": { ""windowPreset"": 1, ""outputs"": [0,0,0,1,2,4,1,0] },
-    ""Preset3"": { ""windowPreset"": 1, ""outputs"": [0,0,0,1,2,4,1,0] },
-    ""Preset4"": { ""windowPreset"": 1, ""outputs"": [0,0,0,1,2,4,1,0] },
-    ""Preset5"": { ""windowPreset"": 1, ""outputs"": [0,0,0,1,2,4,1,0] }
+    ""Preset1"": { ""windowPreset1"": 1, ""windowPreset2"": 0, ""outputs"": [0,0,0,1,2,4,1,0, 0,0,0,0,0,0,0,0, 0,0,0,0] },
+    ""Preset2"": { ""windowPreset1"": 1, ""windowPreset2"": 0, ""outputs"": [0,0,0,1,2,4,1,0, 0,0,0,0,0,0,0,0, 0,0,0,0] },
+    ""Preset3"": { ""windowPreset1"": 1, ""windowPreset2"": 0, ""outputs"": [0,0,0,1,2,4,1,0, 0,0,0,0,0,0,0,0, 0,0,0,0] },
+    ""Preset4"": { ""windowPreset1"": 1, ""windowPreset2"": 0, ""outputs"": [0,0,0,1,2,4,1,0, 0,0,0,0,0,0,0,0, 0,0,0,0] },
+    ""Preset5"": { ""windowPreset1"": 1, ""windowPreset2"": 0, ""outputs"": [0,0,0,1,2,4,1,0, 0,0,0,0,0,0,0,0, 0,0,0,0] }
   }
 }";
         public PresetClient()
@@ -81,8 +103,7 @@ namespace PresetDriver
 
             // Build absolute path here (safer than ctor-time)
             _fm.Initialize(_fileName);
-            Debug("resolved filePath='" + _fm.FileName + "'");
-            LocateFile();
+            Debug("resolved filePath='" + _fm.FileName + "'"); LocateFile();
             LoadPresets();
             _initialized = true;
             Initialized?.Invoke(1);
@@ -126,7 +147,18 @@ namespace PresetDriver
                     json = DefaultJson;
                 }
 
-                var cfg = JsonConvert.DeserializeObject<PresetConfig>(json);
+                PresetConfig cfg = null;
+                try
+                {
+                    cfg = JsonConvert.DeserializeObject<PresetConfig>(json);
+                }
+                catch (Exception ex)
+                {
+                    Debug("LoadPresets: parse error " + ex.Message + " writing defaults.");
+                    _fm.WriteAll(DefaultJson);
+                    cfg = JsonConvert.DeserializeObject<PresetConfig>(DefaultJson);
+                }
+
                 if (cfg?.presets == null || cfg.presets.Count == 0)
                 {
                     Debug("LoadPresets: invalid or empty JSON, writing defaults.");
@@ -134,8 +166,7 @@ namespace PresetDriver
                     cfg = JsonConvert.DeserializeObject<PresetConfig>(DefaultJson);
                 }
 
-                _presets = cfg.presets
-                    .ToDictionary(kv => kv.Key, kv => kv.Value ?? new PresetRecord());
+                _presets = cfg.presets.ToDictionary(kv => kv.Key, kv => NormalizeRecord(kv.Value));
 
                 _presetNames = _presets.Keys.OrderBy(n => n).ToList();
                 _currentPreset = _presetNames.FirstOrDefault();
@@ -146,6 +177,13 @@ namespace PresetDriver
             {
                 Debug("LoadPresets error: " + ex.Message);
             }
+        }
+
+        private static PresetRecord NormalizeRecord(PresetRecord pr)
+        {
+            if(pr == null) pr = new PresetRecord();
+            EnsureOutputSize20(pr);
+            return pr;
         }
         private void PublishPresetList()
         {
@@ -209,64 +247,47 @@ namespace PresetDriver
         {
             Debug("RecallPresetByName(entry) name='" + (name == null ? "(null)" : name.ToString()) + "'");
 
-            var taps = new[]
-            {
-                Output1Changed, Output2Changed, Output3Changed, Output4Changed,
-                Output5Changed, Output6Changed, Output7Changed, Output8Changed
-            };
             var key = name?.ToString();
             if (string.IsNullOrEmpty(key) || !_presets.ContainsKey(key)) return;
 
             _currentPreset = key;
             var pr = _presets[key];
+            EnsureOutputSize20(pr);
 
-            // publish window preset
-            var wp = (ushort)pr.windowPreset;
-            WindowPresetChanged?.Invoke(wp);
-            Debug($"Recalled '{key}' windowPreset={wp}");
+            var w1 = (ushort)pr.windowPreset1;
+            var w2 = (ushort)pr.windowPreset2;
+            WindowPresetChanged?.Invoke(w1);
+            WindowPreset2Changed?.Invoke(w2);
+            Debug($"Recalled '{key}' window1={w1} window2={w2}");
+            var taps = OutputTaps();
+            for(var i = 0; i < taps.Length; i++)
+                taps[i]?.Invoke((ushort)pr.outputs[i]);
 
-            // publish outputs as index/value (1-based)
-            for (var i = 0; i < taps.Length; i ++)
-            {
-                ushort val = 0;
-                if (pr.outputs != null && i < pr.outputs.Count)
-                {
-                    val = (ushort)pr.outputs[i];
-                }
-
-                taps[i]?.Invoke(val);
-            }
         }
-        public void RequestWindowPreset()
+        public void RequestWindowPreset1()
         {
             if (string.IsNullOrEmpty(_currentPreset)) return;
             var pr = _presets[_currentPreset];
-            WindowPresetChanged?.Invoke((ushort)pr.windowPreset);
+            WindowPresetChanged?.Invoke((ushort)pr.windowPreset1);
+        }
+        public void RequestWindowPreset2()
+        {
+            if (string.IsNullOrEmpty(_currentPreset)) return;
+            var pr = _presets[_currentPreset];
+            WindowPreset2Changed?.Invoke((ushort)pr.windowPreset2);
         }
 
         public void RequestOutput(ushort index)
         {
             if (string.IsNullOrEmpty(_currentPreset)) return;
             var pr = _presets[_currentPreset];
-            if (index == 0 || index > 8) return;
+            if (index == 0 || index > 20) return;
+            EnsureOutputSize20(pr);
             ushort val = 0;
+            val = pr.outputs[index - 1];
+            var taps = OutputTaps();
+            taps[index - 1]?.Invoke(val);
 
-            if (pr.outputs != null && index <= pr.outputs.Count)
-            {
-                val = (ushort)pr.outputs[index - 1];
-            }
-
-            switch (index)
-            {
-                case 1: Output1Changed?.Invoke(val); break;
-                case 2: Output2Changed?.Invoke(val); break;
-                case 3: Output3Changed?.Invoke(val); break;
-                case 4: Output4Changed?.Invoke(val); break;
-                case 5: Output5Changed?.Invoke(val); break;
-                case 6: Output6Changed?.Invoke(val); break;
-                case 7: Output7Changed?.Invoke(val); break;
-                case 8: Output8Changed?.Invoke(val); break;
-            }
 
         }
 
@@ -274,20 +295,19 @@ namespace PresetDriver
         {
             if(string.IsNullOrEmpty(_currentPreset)) return;
             var pr = _presets[_currentPreset];
-            var taps = new UshortValue[]
+            EnsureOutputSize20(pr);
+            var taps = OutputTaps();
+            for(int i = 0; i < taps.Length; i++)
+                taps[i]?.Invoke((ushort)pr.outputs[i]);
+        }
+
+        private static void EnsureOutputSize20(PresetRecord pr)
+        {
+            if (pr.outputs == null)
+                pr.outputs = new List<ushort>(new ushort[20]);
+            else
             {
-                Output1Changed, Output2Changed, Output3Changed, Output4Changed,
-                Output5Changed, Output6Changed, Output7Changed, Output8Changed
-            };
-            for (int i = 0; i < taps.Length; i++)
-            {
-                ushort val = 0;
-                if (pr.outputs != null && i < pr.outputs.Count)
-                {
-                    val = (ushort)pr.outputs[i];
-                    
-                }
-                taps[i]?.Invoke(val);
+                while(pr.outputs.Count < 20) pr.outputs.Add(0);
             }
         }
 
@@ -350,7 +370,7 @@ namespace PresetDriver
                 _presets[_currentPreset] = new PresetRecord();
 
             var pr = _presets[_currentPreset];
-            pr.windowPreset = window;
+            pr.windowPreset1 = window;
             pr.outputs = new List<ushort> { o1, o2, o3, o4, o5, o6, o7, o8 };
 
             Debug($"OverwriteCurrentPreset8: '{_currentPreset}' win={window} outs=[{o1},{o2},{o3},{o4},{o5},{o6},{o7},{o8}]");
@@ -371,10 +391,12 @@ namespace PresetDriver
 
             return rc;
         }
-        public int OverwriteCurrentPreset8Masked(
-            ushort window, ushort applyMask,
+        public int OverwriteCurrentPreset20Masked(
+            ushort window1, ushort window2, uint applyMask,
             ushort o1, ushort o2, ushort o3, ushort o4,
-            ushort o5, ushort o6, ushort o7, ushort o8)
+            ushort o5, ushort o6, ushort o7, ushort o8, ushort o9, ushort o10,
+            ushort o11, ushort o12, ushort o13, ushort o14, ushort o15,
+            ushort o16, ushort o17, ushort o18, ushort o19, ushort o20)
         {
             try
             {
@@ -388,24 +410,38 @@ namespace PresetDriver
                     _presets[_currentPreset] = new PresetRecord();
 
                 var pr = _presets[_currentPreset];
-                EnsureOutputsSize(pr);
+                EnsureOutputSize20(pr);
 
-                // Bit 0 -> window, Bits 1..8 -> outputs 1..8
-                if ((applyMask & 0x0001) != 0)
-                    pr.windowPreset = window;
+                // Apply windows per mask
+                if ((applyMask & 0x000000001u) != 0)
+                    pr.windowPreset1 = window1;
+                if ((applyMask & 0x000000002u) != 0)
+                    pr.windowPreset2 = window2;
 
-                var incoming = new[] { o1, o2, o3, o4, o5, o6, o7, o8 };
-                for (int i = 0; i < 8; i++)
+                var incoming = new[] { o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15, o16, o17, o18, o19, o20 };
+                for (int i = 0; i < 20; i++)
                 {
-                    ushort bit = (ushort)(1 << (i + 1)); // output i -> bit i+1
+                    uint bit = 1u << (i + 2); // output i -> bit i+1
                     if ((applyMask & bit) != 0)
                         pr.outputs[i] = incoming[i];
                 }
 
-                Debug($"OverwriteCurrentPreset8Masked: mask=0x{applyMask:X} window={window} " +
+                Debug($"OverwriteCurrentPreset20Masked: mask=0x{applyMask:X} window={window1} " +
                       $"outs=[{string.Join(",", pr.outputs)}]");
 
-                return SavePresets();
+                var rc = SavePresets();
+                if (rc == 0) return 0;
+                if((applyMask & 0x00000001u) != 0)WindowPresetChanged?.Invoke(pr.windowPreset1);
+                if((applyMask & 0x00000002u) != 0)WindowPreset2Changed?.Invoke(pr.windowPreset2);
+                var taps = OutputTaps();
+                for (int i = 0; i < taps.Length; i++)
+                {
+                    uint bit = 1u << (i + 2);
+                    if((applyMask & bit) != 0)
+                        taps[i]?.Invoke(pr.outputs[i]);
+                }
+
+                return 1;
             }
             catch (System.Exception ex)
             {
@@ -424,19 +460,36 @@ namespace PresetDriver
                 _presets[_currentPreset] = new PresetRecord();
 
             var pr = _presets[_currentPreset];
-            pr.windowPreset = window;
+            pr.windowPreset1 = window;
             pr.outputs = outputs == null ? new List<ushort>() : new List<ushort>(outputs);
 
             Debug($"OverwriteCurrentPreset: '{_currentPreset}' win={window} outs=[{string.Join(",", pr.outputs)}]");
             return SavePresets();
         }
         
-        private static void EnsureOutputsSize(PresetRecord pr)
+
+        public void SetFileName(SimplSharpString name)
         {
-            if (pr.outputs == null)
-                pr.outputs = new List<ushort>(new ushort[8]);
-            else
-                while (pr.outputs.Count < 8) pr.outputs.Add(0);
+            var s = (name ?? string.Empty).ToString().Trim();
+            _fileName = NormalizeJsonFileName(s);
+            Debug("SetFileName -> '" + _fileName + "'");
+        }
+
+        private static string NormalizeJsonFileName(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+            {
+                return "advance.json";
+            }
+
+            var s = input.Replace('\\', '/').Trim().TrimStart('/');
+            var cleaned = new string(s
+                .Where(ch => char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' || ch == '.' || ch == '/').ToArray());
+            if (!cleaned.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                cleaned += ".json";
+            }
+            return cleaned;
         }
 
     }
@@ -514,7 +567,8 @@ namespace PresetDriver
     }
     public class PresetRecord
     {
-        public ushort windowPreset { get; set; }
+        public ushort windowPreset1 { get; set; }
+        public ushort windowPreset2 { get; set; }
         public List<ushort> outputs { get; set; }
     }
 }
