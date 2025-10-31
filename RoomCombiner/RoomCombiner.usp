@@ -1,4 +1,4 @@
-#symbol_name "RoomCombiner_v0"
+#symbol_name "RoomCombiner_v0.1"
 #default_volatile
 #enable_trace
 #define_constant pulseLength 50
@@ -6,15 +6,20 @@ digital_input _skip_;
 digital_input Separate, Combine;
 digital_input Room_A_Start;
 digital_input Room_B_Start;
+digital_input Room_AB_Start;
 digital_input Room_A_Shutdown;
 digital_input Room_B_Shutdown;
+digital_input Room_AB_Shutdown;
 digital_output _skip_;
 digital_output Separated_fb;
 digital_output Combined_fb;
 digital_output Room_A_Start_pulse;
 digital_output Room_B_Start_pulse;
+digital_output Room_AB_Start_pulse;
+
 digital_output Room_A_Shutdown_pulse;
 digital_output Room_B_Shutdown_pulse;
+digital_output Room_AB_Shutdown_pulse;
 
 integer mode;
 
@@ -30,11 +35,7 @@ function SetRoomMode()
 		Combined_fb = 0;
 		Separated_fb = 1;
 	}
-	
 }
-
-
-
 push Separate
 {
 	mode = 0;
@@ -50,8 +51,8 @@ push Room_A_Start
 {
 	if(mode = 1)
 	{
-		pulse(pulseLength, Room_A_Start_pulse);
-		pulse(pulseLength, Room_B_Start_pulse);
+		pulse(pulseLength, Room_AB_Start_pulse);
+		//pulse(pulseLength, Room_B_Start_pulse);
 		
 	}
 	else{
@@ -64,8 +65,8 @@ push Room_B_Start
 {
 	if(mode = 1)
 	{
-		pulse(pulseLength, Room_A_Start_pulse);
-		pulse(pulseLength, Room_B_Start_pulse);
+		pulse(pulseLength, Room_AB_Start_pulse);
+		//pulse(pulseLength, Room_B_Start_pulse);
 		
 	}
 	else{
@@ -73,12 +74,17 @@ push Room_B_Start
 	}
 	
 }
+push Room_AB_Start
+{
+	pulse(pulseLength, Room_AB_Start_pulse);
+}
+
 push Room_B_Shutdown
 {
 	if(mode = 1)
 	{
-		pulse(pulseLength, Room_A_Shutdown_pulse);
-		pulse(pulseLength, Room_B_Shutdown_pulse);
+		pulse(pulseLength, Room_AB_Shutdown_pulse);
+		//pulse(pulseLength, Room_B_Shutdown_pulse);
 		
 	}
 	else{
@@ -90,18 +96,22 @@ push Room_A_Shutdown
 {
 	if(mode = 1)
 	{
-		pulse(pulseLength, Room_A_Shutdown_pulse);
-		pulse(pulseLength, Room_B_Shutdown_pulse);
+		pulse(pulseLength, Room_AB_Shutdown_pulse);
+		//pulse(pulseLength, Room_B_Shutdown_pulse);
 		
 	}
 	else{
 		pulse(pulseLength, Room_A_Shutdown_pulse);
 	}
+}
+push Room_AB_Shutdown
+{
+	pulse(pulseLength, Room_AB_Shutdown_pulse);
+	SetRoomMode();
 	
 }
 function Main()
 {
 	WaitForInitializationComplete();
-	mode = 0;
 	SetRoomMode();
 }
