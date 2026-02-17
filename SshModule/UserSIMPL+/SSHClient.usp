@@ -57,6 +57,7 @@ PUSH Initialize
 PUSH Connect
 {
 	client.Connect();
+		
 }
 PUSH Disconnect
 {
@@ -80,10 +81,7 @@ RELEASE Use_Parameters
 }
 THREADSAFE Change tx$
 {
-	if(connected)
-	{
-		client.SendCommand(tx$);
-	}
+	client.SendCommand(tx$);
 }
 function Main()
 {

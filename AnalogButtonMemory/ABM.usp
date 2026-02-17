@@ -1,0 +1,78 @@
+#SYMBOL_NAME "ABM"
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+
+DIGITAL_INPUT WP1Selected;
+DIGITAL_INPUT WP2Selected;
+ANALOG_INPUT WP1, WP2;
+DIGITAL_OUTPUT Preset1Selected, Preset2Selected,Preset3Selected,
+				Preset4Selected,Preset5Selected,Preset6Selected,Preset7Selected;
+function clearbuttons()
+{
+	Preset1Selected = 0;
+	Preset2Selected = 0;
+	Preset3Selected = 0;
+	Preset4Selected = 0;
+	Preset5Selected = 0;
+	Preset6Selected = 0;
+	Preset7Selected = 0;
+}
+function updatePresets()
+{
+	integer val;
+	clearbuttons();
+	if(WP1Selected)
+	{
+		val = WP1;
+	}
+	ELSE IF (WP2Selected)
+	{
+		val = WP2;
+	}
+	else
+	{
+		Return;
+	}
+	if((val < 1) || (val > 7))
+	{
+		return;
+	}
+	switch(val)
+	{
+		case(1):
+		Preset1Selected = 1;
+		case(2):
+		Preset2Selected = 1;
+		case(3):
+		Preset3Selected = 1;
+		case(4):
+		Preset4Selected = 1;
+		case(5):
+		Preset5Selected = 1;
+		case(6):
+		Preset6Selected = 1;
+		case(7):
+		Preset7Selected = 1;
+	}
+}
+PUSH WP1Selected
+{
+	clearbuttons();
+	updatePresets();
+}
+PUSH WP2Selected
+{
+	clearbuttons();
+	updatePresets();
+}
+change Wp1
+{
+	clearbuttons();
+	updatePresets();
+}
+change Wp2
+{
+	clearbuttons();
+	updatePresets();
+}

@@ -66,6 +66,7 @@ integer gMin;
 integer gMax;
 integer gFade;
 integer gSceneLevel;
+integer gExpectLinksLine;
 
 // ================= Helpers =================
 
@@ -179,6 +180,32 @@ function ParseStatus(string line$)
 		Failed_fb = 1;
 		return;
 	}
+	if(gExpectLinksLine)
+	{
+		gExpectLinksLine = 0;
+		
+		// If they say explicitly no links
+		if(find(line$, "No Links Active") > 0)
+		{
+			Link_AB_Linked_fb   = 0;
+			Link_AB_Unlinked_fb = 1;
+		}
+		else
+		{
+			// If "AB" appears in this list, A/B are linked
+			if(find(line$, "AB") > 0)
+			{
+				Link_AB_Linked_fb   = 1;
+				Link_AB_Unlinked_fb = 0;
+			}
+			else
+			{
+				Link_AB_Linked_fb   = 0;
+				Link_AB_Unlinked_fb = 1;
+			}
+		}
+		return;
+	}
 	
 	// ---- Channel status ----
 	if(left(line$, LEN_STATUS_CH) = "status channel")
@@ -236,22 +263,6 @@ function ParseStatus(string line$)
 		return;
 	}
 	
-	// ---- Link status ----
-	// We assume "status links" returns some text where "AB" is present if linked.
-	if(left(line$, 12) = "status links")
-	{
-		if(find(line$, "AB") > 0)
-		{
-			Link_AB_Linked_fb   = 1;
-			Link_AB_Unlinked_fb = 0;
-		}
-		else
-		{
-			Link_AB_Linked_fb   = 0;
-			Link_AB_Unlinked_fb = 1;
-		}
-		return;
-	}
 }
 
 function ParseRxBuffer()
@@ -350,7 +361,6 @@ function RepeatChannelDown()
 		RepeatChannelDown();
 	}
 }
-
 function ActivateScene(integer sceneId, integer level)
 {
 	integer sid;
@@ -387,7 +397,6 @@ function ActivateScene(integer sceneId, integer level)
 	gLastScene   = sid;
 	Scene_Id_fb  = sid;
 }
-
 function AdjustSceneLevel(integer dir)
 {
 	// Make sure step / min / max are current and gSceneLevel is clamped
@@ -401,6 +410,27 @@ function AdjustSceneLevel(integer dir)
 	// Always treat Scene 1 as the “live” scene this control rides
 	ActivateScene(1, gSceneLevel);
 }
+
+
+function RepeatSceneLevelUp()
+{
+	AdjustSceneLevel(1);
+	wait(REPEAT_EVERY_MS, SceneUpTick)
+	{
+		RepeatSceneLevelUp();
+	}
+}
+
+function RepeatSceneLevelDown()
+{
+	AdjustSceneLevel(-1);
+	wait(REPEAT_EVERY_MS, SceneDnTick)
+	{
+		RepeatSceneLevelDown();
+	}
+}
+
+
 
 // ================= Events =================
 
@@ -417,11 +447,32 @@ push Unlink_A_B
 push Scene_Level_Up
 {
 	AdjustSceneLevel(1);
+	wait(REPEAT_START_MS, SceneUpDelay)
+	{
+		RepeatSceneLevelUp();
+	}
+}
+release Scene_Level_Up
+{
+	cancelwait(SceneUpDelay);
+	cancelwait(SceneUpTick);
 }
 
 push Scene_Level_Down
 {
+	// one step immediately
 	AdjustSceneLevel(-1);
+	
+	// after initial delay, start repeating
+	wait(REPEAT_START_MS, SceneDnDelay)
+	{
+		RepeatSceneLevelDown();
+	}
+}
+release Scene_Level_Down
+{
+	cancelwait(SceneDnDelay);
+	cancelwait(SceneDnTick);
 }
 
 // ---- Channel ramp buttons ----

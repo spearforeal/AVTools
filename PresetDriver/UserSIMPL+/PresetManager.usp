@@ -30,8 +30,9 @@ ANALOG_OUTPUT Destination_Out[20];
 PresetClient client;
 INTEGER gLastPresetIdx;
 INTEGER gDbg;
-INTEGER gDirtyMask;   // bit 0=window, bits 1..8 = dest1..dest8
-INTEGER gBit[22];      // powers of two for safe masking
+long_integer gDirtyMask;  
+long_integer gBit[22];      
+long_integer gAllOutputsMask;
 INTEGER gHasFilename;
 
 //********************************Delegates******************************************
@@ -107,6 +108,11 @@ function InitBits()
 	INTEGER i;
 	gBit[0] = 1;
 	for (i = 1 to 21) gBit[i] = gBit[i-1] * 2; // 1,2,4,8,...256
+	gAllOutputsMask = 0;
+	for(i = 1 to 20)
+	{
+		gAllOutputsMask = gAllOutputsMask | gBit[i + 1];
+	}
 }
 //********************************Inputs******************************************
 PUSH Initialize
@@ -146,27 +152,32 @@ PUSH Recall
 PUSH Save
 {
 	INTEGER rc;
+	//integer hi, lo;
+	long_integer applyMask;
 	if (gDbg) PRINT("[%s] Save pressed", DebugName);
+	applyMask = gDirtyMask | gAllOutputsMask;
 	rc = client.OverwriteCurrentPreset20Masked(
-		Window_Preset1_Value, Window_Preset2_Value,  gDirtyMask,
+		Window_Preset1_Value, Window_Preset2_Value,  applyMask,
 		Destination_Value[1], Destination_Value[2], Destination_Value[3], Destination_Value[4],
 		Destination_Value[5], Destination_Value[6], Destination_Value[7], Destination_Value[8], Destination_Value[9], Destination_Value[10],
 		Destination_Value[11], Destination_Value[12], Destination_Value[13], Destination_Value[14], Destination_Value[15], Destination_Value[16],
 		Destination_Value[17], Destination_Value[18], Destination_Value[19], Destination_Value[20]);
 	
+	//hi = applyMask / 65536;
+	//lo = applyMask - (hi * 65536);
 	
 	if(rc <> 0)
 	{
 		PresetSaved_fb = 1;
 		Wait(100){PresetSaved_fb = 0;}
-		if (gDbg) PRINT("[%s] SavePresets OK", DebugName);
+		if (gDbg) PRINT("[%s] SavePresets OK (mask=ALL)", DebugName);
 		gDirtyMask = 0; // we just committed changes
 		
 		
 	}
 	else
 	{
-		if (gDbg) PRINT("[%s] SavePresets FAILED", DebugName);
+		if (gDbg) PRINT("[%s] SavePresets FAILED (mask=All)", DebugName);
 		
 	}
 }

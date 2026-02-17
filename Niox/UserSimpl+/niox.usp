@@ -1,31 +1,38 @@
-#SYMBOL_NAME "Niox_v0"
+#SYMBOL_NAME "Niox_v0.1"
 #DEFAULT_VOLATILE
 #ENABLE_STACK_CHECKING
 #ENABLE_TRACE
 
-// #DEFINE_CONSTANT ALL_CHANNEL     1
-// #DEFINE_CONSTANT STEP_PCT        5
-// #DEFINE_CONSTANT INIT_DELAY_CS   30   
-// #DEFINE_CONSTANT REPEAT_CS       8    
+
+#DEFINE_CONSTANT BUFFER_SIZE 512
 
 // =====Inputs=====
+
+DIGITAL_INPUT _SKIP_, _SKIP_, _SKIP_, _SKIP_;
 DIGITAL_INPUT  Debug;
+DIGITAL_INPUT Poll;
 DIGITAL_INPUT _SKIP_;
 DIGITAL_INPUT Up, Down, AllOn, AllOff;
+ANALOG_INPUT Channel_ID;
 DIGITAL_INPUT  Scene[4];
+STRING_INPUT Rx$[255];
 
 // =====Outputs=====
-
 DIGITAL_OUTPUT  Debug_fb, _SKIP_;
 STRING_OUTPUT  Tx$;        
+ANALOG_OUTPUT Channel_ID_fb;
+DIGITAL_OUTPUT Channel_On[16];
+ANALOG_OUTPUT Channel_Level[16];
+ANALOG_OUTPUT SceneStatus[4];
 
 // =======Params====
-integer_parameter _SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
-_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,_SKIP_,
-
+integer_parameter 
 ALL_CHANNEL, STEP_PCT, INIT_DELAY_CS, REPEAT_CS; 
 // ===== State =====
 INTEGER holdUp, holdDown, DebugEnable;
+INTEGER CurrentChannel;
+STRING RxBuff$[BUFFER_SIZE];
+
 #BEGIN_PARAMETER_PROPERTIES ALL_CHANNEL
 propDefaultUnit = unitDecimal;			
 propValidUnits = unitDecimal;		
@@ -51,7 +58,62 @@ propShortDescription = "Repear rate while holding";
 propDefaultValue = 8d; 
 #END_PARAMETER_PROPERTIES
 
+FUNCTION SetChannel(integer ch)
+{
+	if(ch < 1)
+	{
+		ch = 1;
+	}
+	if(ch > 255)
+	{
+		ch = 255;
+	}
+	CurrentChannel = ch;
+	Channel_ID_fb = CurrentChannel;
+	
+}
+INTEGER_FUNCTION  GetActiveChannel()
+{
+	if(CurrentChannel < 1)
+	{
+		return (ALL_CHANNEL);
+	}
+	return (CurrentChannel);
+}
+
+INTEGER_FUNCTION GetByte(STRING source, INTEGER index)
+{
+	STRING one$[2];
+	INTEGER val;
+	one$ = Mid(source, index, 1);
+	val = GetC(one$);
+	return (val);
+}
+INTEGER_FUNCTION GetPollDataByte(STRING packet$, INTEGER dataIndex)
+{
+	INTEGER byteIndex;
+	byteIndex = 4 + dataIndex;
+	return(GetByte(packet$, byteIndex));
+}
 // ===== Low-level send helpers =====
+FUNCTION SendPoll()
+{
+	INTEGER b0, b1, b2, b3, ck1, ck2;
+	b0 = 165;
+	b1 = 5;
+	b2 = 12;
+	ck1 = 255 ^ (b0 ^ b2);
+	ck2 = 255 ^ (b1);
+	MakeString(Tx$, "%c%c%c%c%c", (b0 & 255),(b1 & 255), (b2 & 255), (ck1 & 255),(ck2 & 255));
+}
+FUNCTION RequestPoll()
+{
+	WAIT(10, PollAfterAction)
+	{
+		SendPoll();
+	}
+}
+
 FUNCTION SendScene(INTEGER n)
 {
 	INTEGER b0, b1, b2, b3, ck1, ck2;
@@ -73,8 +135,8 @@ FUNCTION SendExert(INTEGER ch, INTEGER action, INTEGER amount)
 		(b4 & 255),(b5 & 255),(ck1 & 255),(ck2 & 255));
 }
 
-FUNCTION StepUp()   { SendExert(ALL_CHANNEL, 3, STEP_PCT); }
-FUNCTION StepDown() { SendExert(ALL_CHANNEL, 4, STEP_PCT); }
+FUNCTION StepUp()   { SendExert(GetActiveChannel(), 3, STEP_PCT); }
+FUNCTION StepDown() { SendExert(GetActiveChannel(), 4, STEP_PCT); }
 FUNCTION AllOnFunc() { SendExert(ALL_CHANNEL, 1, 0); } // 1 = On
 FUNCTION AllOffFunc() { SendExert(ALL_CHANNEL, 2, 0); } // 2 = Off
 FUNCTION SetDebug(INTEGER val)
@@ -83,6 +145,100 @@ FUNCTION SetDebug(INTEGER val)
 	Debug_fb = DebugEnable;
 }
 
+FUNCTION HandleAck(STRING packet$)
+{
+	INTEGER cmdSubject;
+	INTEGER code;
+	cmdSubject = GetByte(packet$, 4);
+	code = GetByte(packet$, 5);
+	if(DebugEnable)
+	{
+		PRINT("Niox Ack: sub=0x%02X code=0x%02X\n", cmdSubject, code);
+	}
+}
+FUNCTION HandlePollResponse(STRING packet$)
+{
+	INTEGER b0, b1;
+	INTEGER i, level, s;
+	INTEGER sByte;
+	b0 = GetPollDataByte(packet$, 0);
+	Channel_On[9] = ((b0 & 1) <> 0);
+	Channel_On[10] = ((b0 & 2) <> 0);
+	Channel_On[11] = ((b0 & 4) <> 0);
+	Channel_On[12] = ((b0 & 8) <> 0);
+	Channel_On[13] = ((b0 & 16) <> 0);
+	Channel_On[14] = ((b0 & 32) <> 0);
+	Channel_On[15] = ((b0 & 64) <> 0);
+	Channel_On[16] = ((b0 & 128) <> 0);
+	b1 = GetPollDataByte(packet$, 1);
+	Channel_On[1] = ((b1 & 1) <> 0);
+	Channel_On[2] = ((b1 & 2) <> 0);
+	Channel_On[3] = ((b1 & 4) <> 0);
+	Channel_On[4] = ((b1 & 8) <> 0);
+	Channel_On[5] = ((b1 & 16) <> 0);
+	Channel_On[6] = ((b1 & 32) <> 0);
+	Channel_On[7] = ((b1 & 64) <> 0);
+	Channel_On[8] = ((b1 & 128) <> 0);
+	for(i = 1 TO 16)
+	{
+		level = GetPollDataByte(packet$, i + 1);
+		Channel_Level[i] = level;
+	}
+	s = GetPollDataByte(packet$, 18);
+	SceneStatus[1] = (s / 16);
+	SceneStatus[2] = (s & 15);
+	s = GetPollDataByte(packet$, 19);
+	SceneStatus[3] = (s / 16);
+	SceneStatus[4] = (s & 15);
+	if(DebugEnable)
+	{
+		PRINT("Poll response parsed. \n");
+	}
+}
+FUNCTION ProcessRx()
+{
+	INTEGER buflen, syncPos, pktLen, subject;
+	STRING packet$[64];
+	while(1)
+	{
+		buflen = Len(RxBuff$);
+		if(buflen < 5)
+		{
+			return;
+		}
+		syncPos = Find("\xA5", RxBuff$);
+		if(syncPos = 0)
+		{
+			RxBuff$ = "";
+			return;
+		}
+		if(syncPos > 1)
+		{
+			RxBuff$ = Mid(RxBuff$, syncPos, buflen - syncPos + 1);
+			buflen = Len(RxBuff$);
+			if(buflen < 5)
+			{
+				return;
+			}
+		}
+		pktLen = GetByte(RxBuff$, 2);
+		if(buflen < pktLen)
+		{
+			return;
+		}
+		packet$ = Mid(RxBuff$, 1, pktLen);
+		RxBuff$ = Mid(RxBuff$, pktLen + 1, buflen - pktLen);
+		subject = GetByte(packet$, 3);
+		if(subject = 4)
+		{
+			HandleAck(packet$);
+		}
+		ELSE IF (subject = 13)
+		{
+			HandlePollResponse(packet$);
+		}
+	}
+}
 // ===== Repeat engines =====
 FUNCTION UpTick()
 {
@@ -104,11 +260,29 @@ FUNCTION DownTick()
 
 
 // ===== Handlers =====
+PUSH Poll
+{
+	SendPoll();
+}
+CHANGE Channel_ID
+{
+	SetChannel(Channel_ID);
+	RequestPoll();
+}
+CHANGE Rx$
+{
+	RxBuff$ = RxBuff$ + Rx$;
+	ProcessRx();
+}
 PUSH Scene
 {
 	INTEGER idx;
 	idx = GetLastModifiedArrayIndex();
-	IF ((idx >= 1) && (idx <= 4)) { SendScene(idx); }
+	IF ((idx >= 1) && (idx <= 4)) 
+	{
+		SendScene(idx); 
+		RequestPoll();
+	}
 }
 
 PUSH Up
@@ -122,6 +296,7 @@ RELEASE Up
 	holdUp = 0;
 	CancelWait(UpStart);
 	CancelWait(UpRepeat);
+	RequestPoll();
 }
 
 PUSH Down
@@ -135,6 +310,7 @@ RELEASE Down
 	holdDown = 0;
 	CancelWait(DownStart);
 	CancelWait(DownRepeat);
+	RequestPoll();
 }
 FUNCTION KillWaits()
 {
@@ -149,13 +325,14 @@ PUSH AllOn
 {
 	KillWaits();
 	AllOnFunc();
+	RequestPoll();
 	
 }
 PUSH AllOff
 {
 	KillWaits();
 	AllOffFunc();
-	
+	RequestPoll();
 }
 PUSH Debug
 {

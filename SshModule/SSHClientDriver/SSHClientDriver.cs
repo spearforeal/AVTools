@@ -58,7 +58,7 @@ namespace SSHClientDriver
             this._password = password;
             this._debugName = debugName;
 
-            Debug($"Initializing SSH client: {hostname}:{port}:{username}:{password}");
+            Debug($"Initializing SSH client: {hostname}:{port}:{username}");
             _initialized = true;
             InitializedData?.Invoke(1);
             ConnectionState?.Invoke(0);
@@ -71,20 +71,53 @@ namespace SSHClientDriver
         {
             if (!_initialized)
             {
-                Debug("Connecting SSH client...");
+                Debug("Connect() called but not initialized");
                 return;
             }
 
-            var authMethod = new KeyboardInteractiveAuthenticationMethod(_username);
-            authMethod.AuthenticationPrompt += AuthenticationPromptHandler;
-            var pwd = new PasswordAuthenticationMethod(_username, _password);
-            var connectInfo = new ConnectionInfo(_hostname, _port, _username, new AuthenticationMethod[]{pwd, authMethod});
+            var user = (_username ?? "").Trim();
+            var host = (_hostname ?? "").Trim();
+            var pass = (_password ?? "").Trim();
+            if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(host))
+            {
+                Debug("Connect blocked");
+                return;
+            }
+
+            if (_port <= 0)
+            {
+                Debug("Connect blocked: Invalid port number");
+                return;
+            }
+
+            _username = user;
+            _hostname = host;
+            _password = pass;
+
+            if (_client != null)
+            {
+                if (_client.IsConnected)
+                {
+                    Debug("Connect ignored: already connected");
+                    return;
+
+                }
+                Debug("Connect(): previous client existed but was not connected; cleaning up.");
+                Disconnect();
+            }
+
             
+        
+            var authMethod = new KeyboardInteractiveAuthenticationMethod(user);
+            authMethod.AuthenticationPrompt += AuthenticationPromptHandler;
+            var pwd = new PasswordAuthenticationMethod(user, pass);
+            var connectInfo = new ConnectionInfo(host, _port, user, new AuthenticationMethod[]{pwd, authMethod});
+
             _client = new SshClient(connectInfo);
             _client.KeepAliveInterval = TimeSpan.Zero;
             _client.ErrorOccurred += ClientErrorHandler;
             _client.HostKeyReceived += HostKeyReceivedHandler;
-            Debug("Attempting connection to: " + _hostname + ":" + _port);
+            Debug("Attempting connection to: " + host + ":" + _port);
             try
             {
                 _client.Connect();
