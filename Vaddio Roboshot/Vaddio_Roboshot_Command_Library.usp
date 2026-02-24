@@ -1,0 +1,142 @@
+#HINT "Vaddio Roboshot Command Module"
+#CATEGORY "32"
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+//*********************Constants*********************
+#DEFINE_CONSTANT CMD_PAN_LEFT "camera pan left"
+#DEFINE_CONSTANT CMD_PAN_RIGHT "camera pan right"
+#DEFINE_CONSTANT CMD_ZOOM_IN    "camera zoom in"
+#DEFINE_CONSTANT CMD_ZOOM_OUT   "camera zoom out"
+#DEFINE_CONSTANT CMD_FOCUS_NEAR "camera focus near"
+#DEFINE_CONSTANT CMD_FOCUS_FAR  "camera focus far"
+#DEFINE_CONSTANT CMD_TILT_UP    "camera tilt up"
+#DEFINE_CONSTANT CMD_TILT_DOWN  "camera tilt down"
+#DEFINE_CONSTANT CMD_PAN_STOP   "camera pan stop"
+#DEFINE_CONSTANT CMD_TILT_STOP  "camera tilt stop"
+#DEFINE_CONSTANT CMD_ZOOM_STOP  "camera zoom stop"
+#DEFINE_CONSTANT CMD_FOCUS_STOP "camera focus stop"
+//*********************Digital Inputs*********************
+DIGITAL_INPUT Pan_Left_High, Pan_Left_Low;
+DIGITAL_INPUT Pan_Right_High, Pan_Right_Low;
+DIGITAL_INPUT Tilt_Up_High, Tilt_Up_Low;
+DIGITAL_INPUT Tilt_Down_High, Tilt_Down_Low;
+DIGITAL_INPUT Zoom_In_High, Zoom_In_Low;
+DIGITAL_INPUT Zoom_Out_High, Zoom_Out_Low;
+DIGITAL_INPUT Focus_Near_High, Focus_Near_Low;
+DIGITAL_INPUT Focus_Far_High, Focus_Far_Low;
+DIGITAL_INPUT Pan_Stop, Tilt_Stop, Zoom_Stop, Focus_Stop;
+//*********************Analog Inputs*********************
+ANALOG_INPUT PanSpeedHigh, PanSpeedLow;
+ANALOG_INPUT TiltSpeedHigh, TiltSpeedLow;
+ANALOG_INPUT ZoomSpeedHigh, ZoomSpeedLow;
+ANALOG_INPUT FocusSpeedHigh, FocusSpeedLow;
+//*********************String Outputs*********************
+STRING_OUTPUT Tx$;
+//*********************Local*********************
+STRING cmd$[80];
+STRING spd$[3];
+
+
+//STRING CMD_PAN_LEFT$ = "camera pan left";
+//*********************Utilities*********************
+INTEGER_FUNCTION ClampSpeed(INTEGER s)
+{
+	if(s < 1)
+	{
+		return(1);
+	}
+	if(s > 24)
+	{
+		return(24);
+	}
+	return(s);
+}
+function SendCmdWithSpeed(STRING base$, INTEGER speed)
+{
+	speed = ClampSpeed(speed);
+	Tx$ = base$ + " " + ITOA(speed) + "\x0D";
+}
+function SendCMDWithoutSpeed(STRING cmd$)
+{
+	Tx$ = cmd$ + "\x0D";
+}
+PUSH Pan_Left_High
+{
+	SendCmdWithSpeed(CMD_PAN_LEFT, PanSpeedHigh);
+}
+PUSH Pan_Left_Low
+{
+	SendCmdWithSpeed(CMD_PAN_LEFT, PanSpeedLow);
+}
+PUSH Pan_Right_High
+{
+	SendCmdWithSpeed(CMD_PAN_RIGHT, PanSpeedHigh);
+}
+PUSH Pan_Right_Low
+{
+	SendCmdWithSpeed(CMD_PAN_RIGHT, PanSpeedLow);
+}
+PUSH Tilt_Up_High
+{
+	SendCmdWithSpeed(CMD_TILT_UP, TiltSpeedHigh);
+}
+PUSH Tilt_Up_Low
+{
+	SendCmdWithSpeed(CMD_TILT_UP, TiltSpeedLow);
+}
+PUSH Tilt_Down_High
+{
+	SendCmdWithSpeed(CMD_TILT_DOWN, TiltSpeedHigh);
+}
+PUSH Tilt_Down_Low
+{
+	SendCmdWithSpeed(CMD_TILT_DOWN, TiltSpeedLow);
+}
+PUSH Zoom_In_High
+{
+	SendCmdWithSpeed(CMD_ZOOM_IN, ZoomSpeedHigh);
+}
+PUSH Zoom_In_Low
+{
+	SendCmdWithSpeed(CMD_ZOOM_IN, ZoomSpeedLow);
+}
+PUSH Zoom_Out_High
+{
+	SendCmdWithSpeed(CMD_ZOOM_OUT, ZoomSpeedHigh);
+}
+PUSH Zoom_Out_Low
+{
+	SendCmdWithSpeed(CMD_ZOOM_OUT, ZoomSpeedLow);
+}
+PUSH Focus_Far_High
+{
+	SendCmdWithSpeed(CMD_FOCUS_FAR, FocusSpeedHigh);
+}
+PUSH Focus_Far_Low
+{
+	SendCmdWithSpeed(CMD_FOCUS_FAR, FocusSpeedLow);
+}
+PUSH Focus_Near_High
+{
+	SendCmdWithSpeed(CMD_FOCUS_NEAR, FocusSpeedHigh);
+}
+PUSH Focus_Near_Low
+{
+	SendCmdWithSpeed(CMD_FOCUS_NEAR, FocusSpeedLow);
+}
+PUSH Pan_Stop
+{
+	SendCMDWithoutSpeed(CMD_PAN_STOP);
+}
+PUSH Tilt_Stop
+{
+	SendCMDWithoutSpeed(CMD_TILT_STOP);
+}
+PUSH Zoom_Stop
+{
+	SendCMDWithoutSpeed(CMD_ZOOM_STOP);
+}
+PUSH Focus_Stop
+{
+	SendCMDWithoutSpeed(CMD_FOCUS_STOP);
+}

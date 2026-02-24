@@ -1,0 +1,23 @@
+#SYMBOL_NAME "Nvx_Stream_Routing_v1.0"
+#DEFAULT_VOLATILE
+#ENABLE_STACK_CHECKING
+#ENABLE_TRACE
+ANALOG_INPUT Video_Source[128];
+STRING_INPUT Encoder_Stream_Location[128][100];
+STRING_OUTPUT Decoder_Stream_Location[128];
+INTEGER x, y;
+CHANGE Video_Source
+{
+	x = GetLastModifiedArrayIndex();
+	y = Video_Source[x];
+	
+	if(y>0)
+	{
+		Decoder_Stream_Location[x] = Encoder_Stream_Location[y];
+	}
+	else if(y=0)
+	{
+		Decoder_Stream_Location[x] = "200";
+	}
+	
+}

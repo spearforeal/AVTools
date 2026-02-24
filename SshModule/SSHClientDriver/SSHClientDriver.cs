@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Crestron.SimplSharp;
 using Crestron.SimplSharp.Ssh;
 using Crestron.SimplSharp.Ssh.Common;
+using Independentsoft.IO.StructuredStorage;
 
 namespace SSHClientDriver
 {
@@ -38,6 +39,9 @@ namespace SSHClientDriver
         private int _missedKeepalives;
         private const int MaxMisses = 2;
         private const string HeartbeatToken = "__sshhb__";
+        private readonly object _disconnectLock = new object();
+        private bool _disconnecting;
+        private bool _disposed;
         
         
         
@@ -153,17 +157,33 @@ namespace SSHClientDriver
 
         public void Disconnect()
         {
-            Debug("Disconnect() called.");
-            StopMonitor();
-            SetConnectionState(0);
+            lock (_disconnectLock)
+            {
+                if (_disposed) return;
+                if (_disconnecting) return;
+                _disconnecting = true;
+            }
+
             try
             {
-                if (_stream != null)
+                StopMonitor();
+                SetConnectionState(0);
+                ShellStream stream;
+                SshClient client;
+                lock (_ioLock)
+                {
+                    stream = _stream;
+                    _stream = null;
+                    client = _client;
+                    _client = null;
+
+                }
+
+                if (stream != null)
                 {
                     try
                     {
-
-                        _stream.DataReceived -= StreamDataReceivedHandler;
+                        stream.DataReceived -= StreamDataReceivedHandler;
                     }
                     catch
                     {
@@ -172,7 +192,7 @@ namespace SSHClientDriver
 
                     try
                     {
-                        _stream.ErrorOccurred -= StreamErrorOccurredHandler;
+                        stream.ErrorOccurred -= StreamErrorOccurredHandler;
                     }
                     catch
                     {
@@ -181,50 +201,66 @@ namespace SSHClientDriver
 
                     try
                     {
-                        _stream.Dispose();
+                        stream.Dispose();
                     }
                     catch (Exception ex)
                     {
-                        Debug("Stream dispose " + ex.Message);
+                        Debug("Stream dispose: " + ex.Message);
+                    }
+                }
+
+                if (client == null) return;
+                {
+                    try
+                    {
+                        client.ErrorOccurred -= ClientErrorHandler;
+                    }
+                    catch
+                    {
+                        // ignored
                     }
 
-                    _stream = null;
+                    try
+                    {
+                        client.HostKeyReceived -= HostKeyReceivedHandler;
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
 
-                }
+                    try
+                    {
+                        if (client.IsConnected)
+                            client.Disconnect();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug("Client disconnect: " + ex.Message);
+                    }
 
+                    try
+                    {
+                        client.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug("Client dispose: " + ex.Message);
+                    }
+                }
             }
-            catch (Exception e)
+            finally
             {
-                Debug("Disconnect() stream exception " + e.Message);
-            }
-
-            try
-            {
-                if (_client == null) return;
-                try
+                lock (_disconnectLock)
                 {
-                    if (_client.IsConnected) _client.Disconnect();
+                    _disposed = false;
                 }
-                catch (Exception ex)
-                {
-                    Debug("Client Disconnect: " + ex.Message);
-                }
-                try
-                {
-                    _client.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    Debug("Client dispose: " + ex.Message);
-                }
-                _client = null;
-            }
-            catch (Exception e)
-            {
-                Debug("Disconnect() exception occured: " + e.Message);
             }
         }
-       public void SendCommand(string command)
+
+
+
+        public void SendCommand(string command)
         {
             if (_client == null || !_client.IsConnected || _stream == null || !_stream.CanWrite)
             {
@@ -249,13 +285,30 @@ namespace SSHClientDriver
 
         private void StreamDataReceivedHandler(object sender, ShellDataEventArgs e)
         {
-            var stream = (ShellStream)sender;
-            var dataReceived = "";
-            while (stream.DataAvailable)
+            ShellStream stream;
+            lock (_ioLock)
             {
-                dataReceived += stream.Read();
+                stream = _stream;
             }
 
+            if (stream == null) return;
+            if (!object.ReferenceEquals(sender, stream)) return;
+            var dataReceived = "";
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                while (stream.DataAvailable)
+                {
+                    sb.Append(stream.Read());
+                }
+
+                dataReceived = sb.ToString();
+            }
+            catch(Exception ex)
+            {
+                Debug("Stream read exception (likely disposing): " + ex.Message);
+                return;
+            }
             if (string.IsNullOrEmpty(dataReceived)) return;
             _lastRxTicks = DateTime.UtcNow.Ticks;
             _missedKeepalives = 0;
