@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using Crestron.SimplSharp;
 using Crestron.SimplSharp.Ssh;
 using Crestron.SimplSharp.Ssh.Common;
-using Independentsoft.IO.StructuredStorage;
 
 namespace SSHClientDriver
 {
@@ -36,12 +35,12 @@ namespace SSHClientDriver
         private ushort _currentConnState;
         private readonly object _stateLock = new object();
         private readonly object _ioLock = new object();
+        private readonly object _healthLock = new object();
         private int _missedKeepalives;
         private const int MaxMisses = 2;
         private const string HeartbeatToken = "__sshhb__";
         private readonly object _disconnectLock = new object();
         private bool _disconnecting;
-        private bool _disposed;
         
         
         
@@ -64,8 +63,8 @@ namespace SSHClientDriver
 
             Debug($"Initializing SSH client: {hostname}:{port}:{username}");
             _initialized = true;
-            InitializedData?.Invoke(1);
-            ConnectionState?.Invoke(0);
+            SafeInvokeInitialized(1);
+            SafeInvokeConnectionState(0);
             //InitializedData(Convert.ToUInt16(1));
             
         }
@@ -102,11 +101,18 @@ namespace SSHClientDriver
             {
                 if (_client.IsConnected)
                 {
-                    Debug("Connect ignored: already connected");
-                    return;
+                    if (_stream != null && _stream.CanWrite)
+                    {
+                        Debug("Connect ignored: already connected");
+                        return;
+                    }
 
+                    Debug("Connect(): client connected but stream invalid; reconnecting.");
                 }
-                Debug("Connect(): previous client existed but was not connected; cleaning up.");
+                else
+                {
+                    Debug("Connect(): previous client existed but was not connected; cleaning up.");
+                }
                 Disconnect();
             }
 
@@ -139,10 +145,25 @@ namespace SSHClientDriver
                 Disconnect();
                 return;
             }
+            catch (Exception e)
+            {
+                Debug("Unexpected connect error: " + e.Message);
+                Disconnect();
+                return;
+            }
 
-            _stream = _client.CreateShellStream("terminal", 80, 24, 800, 600, 1024);
-            _stream.DataReceived += StreamDataReceivedHandler;
-            _stream.ErrorOccurred += StreamErrorOccurredHandler;
+            try
+            {
+                _stream = _client.CreateShellStream("terminal", 80, 24, 800, 600, 1024);
+                _stream.DataReceived += StreamDataReceivedHandler;
+                _stream.ErrorOccurred += StreamErrorOccurredHandler;
+            }
+            catch (Exception e)
+            {
+                Debug("Shell stream setup failed: " + e.Message);
+                Disconnect();
+                return;
+            }
             if (_client.IsConnected)
             {
                 Debug("Connected");
@@ -159,7 +180,6 @@ namespace SSHClientDriver
         {
             lock (_disconnectLock)
             {
-                if (_disposed) return;
                 if (_disconnecting) return;
                 _disconnecting = true;
             }
@@ -253,7 +273,7 @@ namespace SSHClientDriver
             {
                 lock (_disconnectLock)
                 {
-                    _disposed = false;
+                    _disconnecting = false;
                 }
             }
         }
@@ -262,19 +282,20 @@ namespace SSHClientDriver
 
         public void SendCommand(string command)
         {
-            if (_client == null || !_client.IsConnected || _stream == null || !_stream.CanWrite)
-            {
-                Debug("SendCommand() not connected");
-                return;
-            }
-
             try
             {
                 lock (_ioLock)
                 {
-                    
-                    _stream.WriteLine(command);
-                    _stream.Flush();
+                    var stream = _stream;
+                    var client = _client;
+                    if (client == null || !client.IsConnected || stream == null || !stream.CanWrite)
+                    {
+                        Debug("SendCommand() not connected");
+                        return;
+                    }
+
+                    stream.WriteLine(command);
+                    stream.Flush();
                 }
             }
             catch (Exception e)
@@ -310,8 +331,11 @@ namespace SSHClientDriver
                 return;
             }
             if (string.IsNullOrEmpty(dataReceived)) return;
-            _lastRxTicks = DateTime.UtcNow.Ticks;
-            _missedKeepalives = 0;
+            lock (_healthLock)
+            {
+                _lastRxTicks = DateTime.UtcNow.Ticks;
+                _missedKeepalives = 0;
+            }
             if(dataReceived.IndexOf(HeartbeatToken, StringComparison.Ordinal) >= 0)
                 dataReceived = dataReceived.Replace(HeartbeatToken, string.Empty);
             if (dataReceived.Length == 0) return;
@@ -319,22 +343,24 @@ namespace SSHClientDriver
             {
                 foreach (var chunk in SplitDataReceived(dataReceived, 250))
                 {
-                    ReceivedData?.Invoke(chunk);
+                    SafeInvokeReceivedData(chunk);
                 }
 
             }
-            else ReceivedData?.Invoke(dataReceived);
+            else SafeInvokeReceivedData(dataReceived);
         }
 
         private void SendHeartBeat()
         {
             try
             {
-                if (_stream == null || !_stream.CanWrite) return;
                 lock (_ioLock)
                 {
-                    _stream.WriteLine("echo " + HeartbeatToken);
-                    _stream.Flush();
+                    var stream = _stream;
+                    if (stream == null || !stream.CanWrite) return;
+
+                    stream.WriteLine("echo " + HeartbeatToken);
+                    stream.Flush();
                 }
             }
             catch
@@ -371,20 +397,12 @@ namespace SSHClientDriver
             Disconnect();
         }
 
-        private IEnumerable<string> SplitDataReceived(string str, int maxChuckSize)
+        private IEnumerable<string> SplitDataReceived(string str, int maxChunkSize)
         {
-            for (var i = 0; i < str.Length; i += maxChuckSize)
+            for (var i = 0; i < str.Length; i += maxChunkSize)
             {
-                yield return str.Substring(i, Math.Min(maxChuckSize, str.Length - i));
+                yield return str.Substring(i, Math.Min(maxChunkSize, str.Length - i));
             }
-        }
-
-        private List<string> SplitDataReceived(string str, int maxChuckSize, int startIndex)
-        {
-            var result = new List<string>();
-            for(var idx = startIndex; idx < str.Length; idx += maxChuckSize)
-                result.Add(str.Substring(idx, Math.Min(maxChuckSize, str.Length - idx)));
-            return result;
         }
 
         private void SetConnectionState(ushort state)
@@ -396,14 +414,54 @@ namespace SSHClientDriver
                 _currentConnState = state;
             }
             if (!changed) return;
-            ConnectionState?.Invoke(state);
+            SafeInvokeConnectionState(state);
             Debug($"ConnectionState -> {state}");
+        }
+
+        private void SafeInvokeInitialized(ushort state)
+        {
+            try
+            {
+                InitializedData?.Invoke(state);
+            }
+            catch (Exception ex)
+            {
+                Debug("InitializedData callback error: " + ex.Message);
+            }
+        }
+
+        private void SafeInvokeConnectionState(ushort state)
+        {
+            try
+            {
+                ConnectionState?.Invoke(state);
+            }
+            catch (Exception ex)
+            {
+                Debug("ConnectionState callback error: " + ex.Message);
+            }
+        }
+
+        private void SafeInvokeReceivedData(SimplSharpString data)
+        {
+            try
+            {
+                ReceivedData?.Invoke(data);
+            }
+            catch (Exception ex)
+            {
+                Debug("ReceivedData callback error: " + ex.Message);
+            }
         }
 
         private void StartMonitor()
         {
             StopMonitor();
-            _lastRxTicks = DateTime.UtcNow.Ticks;
+            lock (_healthLock)
+            {
+                _lastRxTicks = DateTime.UtcNow.Ticks;
+                _missedKeepalives = 0;
+            }
             _monitorTimer = new CTimer(_ =>
             {
                 try
@@ -416,17 +474,26 @@ namespace SSHClientDriver
                         return;
                     }
                     var nowTicks = DateTime.UtcNow.Ticks;
-                    var last = (_lastRxTicks == 0) ? nowTicks : _lastRxTicks;
+                    long last;
+                    lock (_healthLock)
+                    {
+                        last = (_lastRxTicks == 0) ? nowTicks : _lastRxTicks;
+                    }
                     var idleMs = (nowTicks - last) / TimeSpan.TicksPerMillisecond;
 
 
                     if (idleMs > IdleTimeoutMs)
                     {
-                        _missedKeepalives++;
+                        int currentMisses;
+                        lock (_healthLock)
+                        {
+                            _missedKeepalives++;
+                            currentMisses = _missedKeepalives;
+                        }
                         Debug(
-                            $"Monitor: idle {idleMs / 1000.0:0.0}s (> {IdleTimeoutMs / 1000.0:0.0}s) miss #{_missedKeepalives}; sending heartbeat");
+                            $"Monitor: idle {idleMs / 1000.0:0.0}s (> {IdleTimeoutMs / 1000.0:0.0}s) miss #{currentMisses}; sending heartbeat");
                         SendHeartBeat();
-                        if (_missedKeepalives >= MaxMisses)
+                        if (currentMisses >= MaxMisses)
                         {
                             Debug("Monitor: heartbeat missed exceeded. Forcing disconnect");
                             SetConnectionState(0);
