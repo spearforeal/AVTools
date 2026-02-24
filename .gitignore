@@ -49,6 +49,7 @@ StyleCop.Cache
 *.csproj.user
 *.testrunconfig
 *.sln.cache
+**/.DS_Store
 
 # test result files
 results.xml
