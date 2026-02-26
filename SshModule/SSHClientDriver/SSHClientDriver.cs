@@ -1,6 +1,3 @@
-// Simpl# SSH Client Library for Crestron 4-Series
-// Supports password and key-based SSH authentication and interactive shell sessions.
-// Uses Crestron.SimplSharp.Ssh (SSH.NET) for SSH functionality.
 
 using System;
 using System.Collections.Generic;
@@ -65,11 +62,7 @@ namespace SSHClientDriver
             _initialized = true;
             SafeInvokeInitialized(1);
             SafeInvokeConnectionState(0);
-            //InitializedData(Convert.ToUInt16(1));
-            
         }
-
-
         public void Connect()
         {
             if (!_initialized)
@@ -77,7 +70,6 @@ namespace SSHClientDriver
                 Debug("Connect() called but not initialized");
                 return;
             }
-
             var user = (_username ?? "").Trim();
             var host = (_hostname ?? "").Trim();
             var pass = (_password ?? "").Trim();
@@ -86,17 +78,14 @@ namespace SSHClientDriver
                 Debug("Connect blocked");
                 return;
             }
-
             if (_port <= 0)
             {
                 Debug("Connect blocked: Invalid port number");
                 return;
             }
-
             _username = user;
             _hostname = host;
             _password = pass;
-
             if (_client != null)
             {
                 if (_client.IsConnected)
@@ -115,14 +104,10 @@ namespace SSHClientDriver
                 }
                 Disconnect();
             }
-
-            
-        
             var authMethod = new KeyboardInteractiveAuthenticationMethod(user);
             authMethod.AuthenticationPrompt += AuthenticationPromptHandler;
             var pwd = new PasswordAuthenticationMethod(user, pass);
             var connectInfo = new ConnectionInfo(host, _port, user, new AuthenticationMethod[]{pwd, authMethod});
-
             _client = new SshClient(connectInfo);
             _client.KeepAliveInterval = TimeSpan.Zero;
             _client.ErrorOccurred += ClientErrorHandler;
