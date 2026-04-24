@@ -63,7 +63,7 @@ be sent when the program restarts or the system reboots "normally",
 i.e. it didn't crash.
 #HELP_END
 
-DIGITAL_INPUT _SKIP_, _SKIP_, _SKIP_, _SKIP_, Connect, Disconnect, Disable, Debug, RemoveNullChars;
+DIGITAL_INPUT _SKIP_, _SKIP_, _SKIP_, _SKIP_, Connect, Disconnect, Disable, Debug, RemoveNullChars, RawBytes;
 
 ANALOG_INPUT _SKIP_, NetPort;
 
@@ -222,6 +222,18 @@ CHANGE Debug
 	}
 }
 
+CHANGE RawBytes
+{
+	if (RawBytes > 0)
+	{
+		tcpClient.EnableRawBytes();
+	}
+	else
+	{
+		tcpClient.DisableRawBytes();
+	}
+}
+
 CHANGE Username
 {
 	string temp[MAX_CMD_LENGTH];
@@ -341,6 +353,7 @@ Function Main()
 	
 	tcpClient.Address = sAddress;
 	tcpClient.Port = iPort;
+	tcpClient.DisableRawBytes();
 	
 	tcpClient.SetSplitCharacter(SplitCharacter);
 	

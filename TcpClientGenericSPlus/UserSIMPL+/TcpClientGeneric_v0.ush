@@ -68,6 +68,8 @@
   InputSigType8=Digital
   InputCue9=RemoveNullChars
   InputSigType9=Digital
+  InputCue10=RawBytes
+  InputSigType10=Digital
   OutputCue1=[~UNUSED~]
   OutputSigType1=Digital
   OutputCue2=[~UNUSED~]
@@ -133,8 +135,8 @@
   ParamSigType3=Constant
   ParamCue4=SplitCharacter
   ParamSigType4=String
-  MinVariableInputs=9
-  MaxVariableInputs=9
+  MinVariableInputs=10
+  MaxVariableInputs=10
   MinVariableInputsList2=15
   MaxVariableInputsList2=15
   MinVariableOutputs=5

@@ -22,6 +22,7 @@ namespace TcpClientGenericSPlus
         public int RxBufferSize;
         public string DebugName;
         public bool Debug;
+        public bool RawBytes;
         public bool RemoveNullCharacters;
         private string _splitOnCharacter;
         public bool SendKeepALive;
@@ -46,6 +47,7 @@ namespace TcpClientGenericSPlus
             SendKeepALive = false;
             ReconnectAutomatically = false;
             RemoveNullCharacters = false;
+            RawBytes = false;
             DebugName = nameof(TcpClientGeneric);
             RxBufferSize = 4096;
             _splitOnCharacter = string.Empty;
@@ -61,7 +63,8 @@ namespace TcpClientGenericSPlus
             {
                 if (_client != null)
                 {
-                    var num = (int)_client.SendData(Encoding.ASCII.GetBytes(str), str.Length);
+                    var buffer = RawBytes ? GetRawBytes(str) : Encoding.ASCII.GetBytes(str);
+                    var num = (int)_client.SendData(buffer, buffer.Length);
                 }
 
                 if (!Debug || str.Length <= 0)
@@ -251,8 +254,34 @@ namespace TcpClientGenericSPlus
 
         public void EnableDebug() => Debug = true;
         public void DisableDebug() => Debug = false;
+        public void EnableRawBytes() => RawBytes = true;
+        public void DisableRawBytes() => RawBytes = false;
         public void EnableRemoveNullCharacters() => RemoveNullCharacters = true;
         public void DisableRemoveNullCharacters() => RemoveNullCharacters = false;
+
+        private static byte[] GetRawBytes(string str)
+        {
+            if (string.IsNullOrEmpty(str))
+                return new byte[0];
+
+            var bytes = new byte[str.Length];
+            for (var i = 0; i < str.Length; i++)
+                bytes[i] = (byte)(str[i] & 0xFF);
+
+            return bytes;
+        }
+
+        private static string GetRawString(byte[] buffer, int length)
+        {
+            if (buffer == null || length <= 0)
+                return string.Empty;
+
+            var chars = new char[length];
+            for (var i = 0; i < length; i++)
+                chars[i] = (char)buffer[i];
+
+            return new string(chars);
+        }
 
         public void SendResponseToSPlus(string response)
         {
@@ -378,7 +407,9 @@ namespace TcpClientGenericSPlus
                 if (IsConnected && bytesReceived > 0)
                 {
                     var incomingDataBuffer = rxClient.IncomingDataBuffer;
-                    var str1 = Encoding.UTF8.GetString(incomingDataBuffer, 0, incomingDataBuffer.Length);
+                    var str1 = RawBytes
+                        ? GetRawString(incomingDataBuffer, bytesReceived)
+                        : Encoding.UTF8.GetString(incomingDataBuffer, 0, bytesReceived);
                     var empty = string.Empty;
                     var str2 = !RemoveNullCharacters ? str1 : str1.Replace("\0", string.Empty);
                     if (_splitOnCharacter.Length > 0)
