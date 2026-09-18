@@ -38,9 +38,21 @@ namespace SSHClientDriver
         private const string HeartbeatToken = "__sshhb__";
         private readonly object _disconnectLock = new object();
         private bool _disconnecting;
+        private readonly object _connectionLock = new object();
+        private CTimer _reconnectTimer;
+        private bool _connectionRequested;
+        private bool _connecting;
+        private const long InitialReconnectDelayMs = 5000;
+        private const long MaximumReconnectDelayMs = 30000;
+        private long _nextReconnectDelayMs = InitialReconnectDelayMs;
         
         
         
+
+        public SshClientDevice()
+        {
+            _reconnectTimer = new CTimer(ReconnectTimerCallback, null, -1L);
+        }
 
         public void Debug(string message)
         {
@@ -52,6 +64,11 @@ namespace SSHClientDriver
 
         public void Initialize(string hostname, int port, string username, string password, string debugName)
         {
+            // Reinitialization replaces the active session. Tear it down first so
+            // connection feedback and the client/stream state cannot disagree,
+            // and the next Connect() uses the newly supplied settings.
+            Disconnect();
+
             this._hostname = hostname;
             this._port = port;
             this._username = username;
@@ -65,103 +82,160 @@ namespace SSHClientDriver
         }
         public void Connect()
         {
-            if (!_initialized)
+            lock (_connectionLock)
             {
-                Debug("Connect() called but not initialized");
-                return;
+                _connectionRequested = true;
             }
-            var user = (_username ?? "").Trim();
-            var host = (_hostname ?? "").Trim();
-            var pass = (_password ?? "").Trim();
-            if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(host))
+
+            AttemptConnection();
+        }
+
+        private void AttemptConnection()
+        {
+            lock (_connectionLock)
             {
-                Debug("Connect blocked");
-                return;
-            }
-            if (_port <= 0)
-            {
-                Debug("Connect blocked: Invalid port number");
-                return;
-            }
-            _username = user;
-            _hostname = host;
-            _password = pass;
-            if (_client != null)
-            {
-                if (_client.IsConnected)
+                if (!_connectionRequested || _connecting)
                 {
-                    if (_stream != null && _stream.CanWrite)
+                    return;
+                }
+
+                _connecting = true;
+            }
+
+            bool scheduleReconnect = false;
+            try
+            {
+                if (!_initialized)
+                {
+                    Debug("Connect() called but not initialized");
+                    StopConnectionRequests();
+                    return;
+                }
+
+                var user = (_username ?? "").Trim();
+                var host = (_hostname ?? "").Trim();
+                var pass = _password ?? "";
+                if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(host))
+                {
+                    Debug("Connect blocked: username or hostname is empty");
+                    StopConnectionRequests();
+                    return;
+                }
+                if (_port <= 0 || _port > 65535)
+                {
+                    Debug("Connect blocked: Invalid port number");
+                    StopConnectionRequests();
+                    return;
+                }
+                _username = user;
+                _hostname = host;
+                _password = pass;
+                if (_client != null)
+                {
+                    if (_client.IsConnected && _stream != null && _stream.CanWrite)
                     {
                         Debug("Connect ignored: already connected");
                         return;
                     }
 
-                    Debug("Connect(): client connected but stream invalid; reconnecting.");
+                    Debug("Connect(): cleaning up previous client.");
+                    CleanupConnection();
+                }
+
+                var authMethod = new KeyboardInteractiveAuthenticationMethod(user);
+                authMethod.AuthenticationPrompt += AuthenticationPromptHandler;
+                var pwd = new PasswordAuthenticationMethod(user, pass);
+                var connectInfo = new ConnectionInfo(host, _port, user, new AuthenticationMethod[]{pwd, authMethod});
+                _client = new SshClient(connectInfo);
+                _client.KeepAliveInterval = TimeSpan.Zero;
+                _client.ErrorOccurred += ClientErrorHandler;
+                _client.HostKeyReceived += HostKeyReceivedHandler;
+                Debug("Attempting connection to: " + host + ":" + _port);
+                try
+                {
+                    _client.Connect();
+                }
+                catch (SshAuthenticationException e)
+                {
+                    Debug("Authentication failed: " + e.Message);
+                    StopConnectionRequests();
+                    CleanupConnection();
+                    return;
+                }
+                catch (SshConnectionException e)
+                {
+                    Debug("Connection error: " + e.Message + ", Reason:  " + e.DisconnectReason);
+                    if(e.InnerException != null) Debug("Inner: " +  e.InnerException.Message);
+                    CleanupConnection();
+                    scheduleReconnect = true;
+                    return;
+                }
+                catch (Exception e)
+                {
+                    Debug("Unexpected connect error: " + e.Message);
+                    CleanupConnection();
+                    scheduleReconnect = true;
+                    return;
+                }
+
+                try
+                {
+                    _stream = _client.CreateShellStream("terminal", 80, 24, 800, 600, 1024);
+                    _stream.DataReceived += StreamDataReceivedHandler;
+                    _stream.ErrorOccurred += StreamErrorOccurredHandler;
+                }
+                catch (Exception e)
+                {
+                    Debug("Shell stream setup failed: " + e.Message);
+                    CleanupConnection();
+                    scheduleReconnect = true;
+                    return;
+                }
+                if (_client.IsConnected)
+                {
+                    Debug("Connected");
+                    CancelReconnect();
+                    lock (_connectionLock)
+                    {
+                        _nextReconnectDelayMs = InitialReconnectDelayMs;
+                    }
+                    SetConnectionState(1);
+                    StartMonitor();
                 }
                 else
                 {
-                    Debug("Connect(): previous client existed but was not connected; cleaning up.");
+                    Debug("Could not complete connection");
+                    CleanupConnection();
+                    scheduleReconnect = true;
                 }
-                Disconnect();
-            }
-            var authMethod = new KeyboardInteractiveAuthenticationMethod(user);
-            authMethod.AuthenticationPrompt += AuthenticationPromptHandler;
-            var pwd = new PasswordAuthenticationMethod(user, pass);
-            var connectInfo = new ConnectionInfo(host, _port, user, new AuthenticationMethod[]{pwd, authMethod});
-            _client = new SshClient(connectInfo);
-            _client.KeepAliveInterval = TimeSpan.Zero;
-            _client.ErrorOccurred += ClientErrorHandler;
-            _client.HostKeyReceived += HostKeyReceivedHandler;
-            Debug("Attempting connection to: " + host + ":" + _port);
-            try
-            {
-                _client.Connect();
-            }
-            catch (SshAuthenticationException e)
-            {
-                Debug("Authentication failed: " + e.Message);
-                Disconnect();
-                return;
-            }
-            catch (SshConnectionException e)
-            {
-                Debug("Connection error: " + e.Message + ", Reason:  " + e.DisconnectReason);
-                if(e.InnerException != null) Debug("Inner: " +  e.InnerException.Message);
-                Disconnect();
-                return;
             }
             catch (Exception e)
             {
-                Debug("Unexpected connect error: " + e.Message);
-                Disconnect();
-                return;
+                Debug("Unexpected connection state error: " + e.Message);
+                CleanupConnection();
+                scheduleReconnect = true;
             }
+            finally
+            {
+                lock (_connectionLock)
+                {
+                    _connecting = false;
+                }
 
-            try
-            {
-                _stream = _client.CreateShellStream("terminal", 80, 24, 800, 600, 1024);
-                _stream.DataReceived += StreamDataReceivedHandler;
-                _stream.ErrorOccurred += StreamErrorOccurredHandler;
-            }
-            catch (Exception e)
-            {
-                Debug("Shell stream setup failed: " + e.Message);
-                Disconnect();
-                return;
-            }
-            if (_client.IsConnected)
-            {
-                Debug("Connected");
-                SetConnectionState(1);
-                StartMonitor();
-            }
-            else
-            {
-                Debug("Could not complete connection");
+                if (scheduleReconnect)
+                {
+                    ScheduleReconnect();
+                }
             }
         }
 
         public void Disconnect()
+        {
+            StopConnectionRequests();
+            CleanupConnection();
+        }
+
+        private void CleanupConnection()
         {
             lock (_disconnectLock)
             {
@@ -263,6 +337,73 @@ namespace SSHClientDriver
             }
         }
 
+        private void StopConnectionRequests()
+        {
+            lock (_connectionLock)
+            {
+                _connectionRequested = false;
+                _nextReconnectDelayMs = InitialReconnectDelayMs;
+            }
+
+            CancelReconnect();
+        }
+
+        private void ScheduleReconnect()
+        {
+            long delay;
+            lock (_connectionLock)
+            {
+                if (!_connectionRequested)
+                {
+                    return;
+                }
+
+                delay = _nextReconnectDelayMs;
+                _nextReconnectDelayMs = Math.Min(
+                    _nextReconnectDelayMs * 2,
+                    MaximumReconnectDelayMs);
+            }
+
+            Debug("Scheduling reconnect in " + (delay / 1000) + " seconds");
+            _reconnectTimer.Reset(delay);
+        }
+
+        private void CancelReconnect()
+        {
+            try
+            {
+                if (_reconnectTimer != null)
+                {
+                    _reconnectTimer.Stop();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug("Reconnect timer stop: " + ex.Message);
+            }
+        }
+
+        private void ReconnectTimerCallback(object state)
+        {
+            lock (_connectionLock)
+            {
+                if (!_connectionRequested)
+                {
+                    return;
+                }
+            }
+
+            Debug("Reconnect timer expired");
+            AttemptConnection();
+        }
+
+        private void HandleConnectionLoss(string reason)
+        {
+            Debug(reason);
+            CleanupConnection();
+            ScheduleReconnect();
+        }
+
 
 
         public void SendCommand(string command)
@@ -285,7 +426,7 @@ namespace SSHClientDriver
             }
             catch (Exception e)
             {
-                Debug("SendCommand error: " + e.Message);
+                HandleConnectionLoss("SendCommand error: " + e.Message);
             }
         }
 
@@ -356,10 +497,14 @@ namespace SSHClientDriver
 
         private void StreamErrorOccurredHandler(object sender, EventArgs e)
         {
-            Debug("$SSH Shellstream error " + e);
-            SetConnectionState(0);
-            Disconnect();
+            ShellStream stream;
+            lock (_ioLock)
+            {
+                stream = _stream;
+            }
 
+            if (!object.ReferenceEquals(sender, stream)) return;
+            HandleConnectionLoss("SSH shell stream error: " + e);
         }
         private void AuthenticationPromptHandler(object sender, AuthenticationPromptEventArgs e)
         {
@@ -377,9 +522,14 @@ namespace SSHClientDriver
         }
         private void ClientErrorHandler(object sender, ExceptionEventArgs e)
         {
-            Debug("SSH client error " + e.Exception.Message);
-            SetConnectionState(0);
-            Disconnect();
+            SshClient client;
+            lock (_ioLock)
+            {
+                client = _client;
+            }
+
+            if (!object.ReferenceEquals(sender, client)) return;
+            HandleConnectionLoss("SSH client error: " + e.Exception.Message);
         }
 
         private IEnumerable<string> SplitDataReceived(string str, int maxChunkSize)
@@ -453,9 +603,7 @@ namespace SSHClientDriver
                 {
                     if (_client == null || !_client.IsConnected|| _stream == null)
                     {
-                        Debug("Monitor: not connected");
-                        SetConnectionState(0);
-                        Disconnect();
+                        HandleConnectionLoss("Monitor: not connected");
                         return;
                     }
                     var nowTicks = DateTime.UtcNow.Ticks;
@@ -480,9 +628,7 @@ namespace SSHClientDriver
                         SendHeartBeat();
                         if (currentMisses >= MaxMisses)
                         {
-                            Debug("Monitor: heartbeat missed exceeded. Forcing disconnect");
-                            SetConnectionState(0);
-                            Disconnect();
+                            HandleConnectionLoss("Monitor: heartbeat misses exceeded");
                             return;
                         }
 
@@ -492,9 +638,7 @@ namespace SSHClientDriver
                 }
                 catch (Exception ex)
                 {
-                    Debug("Monitor exception: " + ex.Message);
-                    SetConnectionState(0);
-                    Disconnect();
+                    HandleConnectionLoss("Monitor exception: " + ex.Message);
                 }
             }, null, MonitorIntervalMs,  MonitorIntervalMs);
         }
